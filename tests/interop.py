@@ -182,7 +182,7 @@ def main():
         if os.name != "nt":
             parser.error("--isolate-windows-runtime requires Windows")
         environment = os.environ.copy()
-        system_root = environment["SystemRoot"]
+        system_root = os.environ["SYSTEMROOT"]
         environment["PATH"] = os.pathsep.join((system_root, os.path.join(system_root, "System32")))
     binary_dir = Path(args.bin).resolve()
     suffix = ".exe" if os.name == "nt" else ""

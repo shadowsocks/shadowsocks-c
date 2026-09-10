@@ -9,6 +9,14 @@ function(ss_project_options target)
     target_include_directories(${target} BEFORE PRIVATE ${MBEDTLS_INCLUDE_DIRS})
     if(WIN32)
         target_compile_definitions(${target} PRIVATE WIN32_LEAN_AND_MEAN __USE_MINGW_ANSI_STDIO=1)
+        # MinGW can otherwise pull in libwinpthread/libgcc from the toolchain,
+        # even when all explicitly selected dependencies are static archives.
+        get_target_property(ss_target_type ${target} TYPE)
+        # Zig already supplies its own runtime for DLLs; its -static switch
+        # changes the output kind instead of just selecting static libraries.
+        if(NOT ss_target_type STREQUAL "SHARED_LIBRARY" OR CMAKE_C_COMPILER_ID STREQUAL "GNU")
+            target_link_options(${target} PRIVATE -static)
+        endif()
     endif()
     if(MSVC)
         target_compile_options(${target} PRIVATE /W4)

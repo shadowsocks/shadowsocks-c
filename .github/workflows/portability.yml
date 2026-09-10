@@ -64,9 +64,14 @@ jobs:
           cmake --install build --prefix "$PWD/install"
           cmake -S tests/consumer -B consumer -G Ninja -DCMAKE_PREFIX_PATH="$PWD/install"
           cmake --build consumer
-          export PATH="$PWD/install/bin:$PATH"
-          ./consumer/consumer_static.exe
-          ./consumer/consumer_shared.exe
+      - name: Run installed consumers without toolchain DLLs
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:GITHUB_WORKSPACE\install\bin;$env:SystemRoot\System32;$env:SystemRoot"
+          & ./consumer/consumer_static.exe
+          if ($LASTEXITCODE -ne 0) { throw "Static consumer failed: $LASTEXITCODE" }
+          & ./consumer/consumer_shared.exe
+          if ($LASTEXITCODE -ne 0) { throw "Shared consumer failed: $LASTEXITCODE" }
 
   freebsd:
     runs-on: ubuntu-latest

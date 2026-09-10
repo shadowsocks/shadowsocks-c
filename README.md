@@ -119,12 +119,10 @@ validation limits are tracked in [docs/modernization.md](docs/modernization.md).
 
 ### Debian & Ubuntu
 
-#### Install from repository (not recommended)
+#### Distribution packages
 
-Shadowsocks-libev is available in the official repository for following distributions:
-
-* Debian 8 or higher, including oldoldstable (jessie), old stable (stretch), stable (buster), testing (bullseye) and unstable (sid)
-* Ubuntu 16.10 or higher
+Package availability and versions depend on the distribution release; packaged
+versions can differ from this source branch.
 
 ```bash
 sudo apt update
@@ -133,17 +131,15 @@ sudo apt install shadowsocks-libev
 
 #### Build deb package from source
 
-You can build shadowsocks-libev and all its dependencies by script:
+Install the build dependencies listed in `debian/control`, then build the
+packages from this checkout:
 
 ```bash
-mkdir -p ~/build-area/
-cp ./scripts/build_deb.sh ~/build-area/
-cd ~/build-area
-./build_deb.sh
+dpkg-buildpackage -b -us -uc
 ```
 
-For older systems, building `.deb` packages is not supported.
-Please try to build and install directly from source. See the [Linux](#linux) section below.
+Debian packaging explicitly uses system libraries. For a bundled build without
+library development packages, use the [CMake instructions](#build-from-source-cmake).
 
 #### Configure and start the service
 
@@ -161,19 +157,10 @@ sudo systemctl start shadowsocks-libev      # for systemd
 
 ### Fedora & RHEL
 
-Supported distributions:
-
-* Recent Fedora versions (until EOL)
-* RHEL 6, 7 and derivatives (including CentOS, Scientific Linux)
-
-#### Build from source with centos
-
-If you are using CentOS 7, you need to install these prerequirements to build from source code:
-
-```bash
-yum install epel-release -y
-yum install gcc gettext autoconf libtool automake make pcre-devel asciidoc xmlto c-ares-devel libev-devel libsodium-devel mbedtls-devel -y
-```
+Use the bundled CMake build above with a C11 compiler, CMake 3.20+ and Make
+or Ninja. Older distribution toolchains may need upgrading. Autotools, gettext
+and separately installed crypto/event/DNS development libraries are not required
+for bundled mode.
 
 ### Archlinux & Manjaro
 
