@@ -118,9 +118,19 @@ def udp_case(proxy_port, origin_port):
 
 
 def free_port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+    # TCP and UDP have separate port reservations, especially on Windows.
+    # Probe both while holding the TCP socket so a TCP-only free port cannot
+    # select a reserved or occupied UDP endpoint.
+    for _ in range(100):
+        with socket.socket() as tcp, socket.socket(type=socket.SOCK_DGRAM) as udp:
+            tcp.bind(("127.0.0.1", 0))
+            port = tcp.getsockname()[1]
+            try:
+                udp.bind(("127.0.0.1", port))
+            except OSError:
+                continue
+            return port
+    raise RuntimeError("could not find a free TCP/UDP port")
 
 
 def wait_ready(process, port):
