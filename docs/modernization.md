@@ -1,7 +1,8 @@
 # Self-contained C modernization
 
-Status: in progress. This checklist tracks the complete agreed scope; unchecked
-items are not claimed complete. Implementation branch: feature/self-contained-portable-c.
+Status: complete for the agreed modernization scope. Native MSVC remains an
+explicitly deferred milestone. Implementation branch: feature/self-contained-portable-c;
+review: https://github.com/shadowsocks/shadowsocks-libev/pull/3050 (draft).
 
 ## Compatibility contract
 
@@ -26,11 +27,11 @@ for unavailable functionality. Linux redirection/netfilter remains Linux-only.
       differential tests including holes inside larger networks.
 - [x] Vendor the small bloom filter and remove all three submodule requirements.
 - [x] Portability layer for sockets/errors, I/O, clocks, randomness and processes.
-- [ ] Runtime CI: Linux glibc/musl, macOS, FreeBSD, Windows MinGW.
+- [x] Runtime CI: Linux glibc/musl, macOS, FreeBSD, Windows MinGW.
 - [x] Document MSVC/event-loop compatibility assessment as a later milestone.
 - [x] Minimal profile: no regex/plugins/manager/legacy stream ciphers.
 - [x] Crypto-only Mbed TLS configuration and evidence-backed provider assessment.
-- [ ] Complete sanitizers/static analysis, compatibility and stress validation,
+- [x] Complete sanitizers/static analysis, compatibility and stress validation,
       release archive offline build, installed consumer, before/after report.
 
 ## Baseline provenance
@@ -65,23 +66,28 @@ checkout for publishing. No submodules are accepted in the archive.
 
 ## Platform validation
 
-CI on commit 9623456 passes Linux glibc x86-64/ARM64 and macOS full/minimal
-builds, real TCP/UDP relay, SIP003 cleanup (full profile), and relocated installed
-consumers. FreeBSD 14.3 passes compilation, unit/vendor tests and real TCP/UDP
-relay. Alpine/musl builds the release archive with networking disabled and passes
-all unit/vendor and TCP/UDP tests. Linux Valgrind, ASan/UBSan, coverage and the
-required shadowsocks-rust interoperability job pass, as does clang-tidy-18.
+Implementation validation at commit cdb192a passes the full platform matrix:
+Linux glibc x86-64/ARM64 and macOS full/minimal builds, real TCP/UDP relay, SIP003
+cleanup (full profile), and relocated installed consumers. FreeBSD 14.3 passes
+compilation, unit/vendor tests, real TCP/UDP relay and installed consumers.
+Native Windows UCRT64 passes all 31 unit/vendor tests, six-method TCP/UDP relay,
+and installed static/shared consumers. Relay and consumer execution excludes
+MSYS2/toolchain DLL directories from PATH; binaries require only Windows system
+DLLs. Zig cross-builds also include both libraries and installed consumers.
 
-Native Windows and Debian packaging remain under validation. Subsequent fixes
-address Windows CMake drive paths and printf size formats, explicit FreeBSD
-socket headers, Alpine fortify diagnostics, and Debian install metadata/tooling.
-Windows cross-builds include both libraries and installed consumers.
+Alpine/musl builds the release archive with networking and Python discovery
+disabled and passes all unit/vendor and TCP/UDP tests. Linux Valgrind, ASan/UBSan,
+coverage, required shadowsocks-rust interoperability, clang-tidy-18, and Debian
+package construction pass. Evidence: [platform matrix](https://github.com/shadowsocks/shadowsocks-libev/actions/runs/34505389620),
+[tests and analysis](https://github.com/shadowsocks/shadowsocks-libev/actions/runs/34505389548),
+[system builds and packaging](https://github.com/shadowsocks/shadowsocks-libev/actions/runs/34505389561).
 
-A committed source archive also builds locally on Linux arm64 with networking
-and Python discovery disabled, passing all 31 unit/vendor tests and six-method
-TCP/UDP plus SIP003 tests. The source release itself needs no Git or Python to
-compile. Final archive regeneration and current-head matrix verification remain
-completion gates.
+The same committed source archive also builds locally on Linux arm64 with
+networking and Python discovery disabled, passing all 31 unit/vendor tests and
+six-method TCP/UDP plus SIP003 tests. The source release itself needs no Git or
+Python to compile. Executable-only installation omits library metadata, and a
+minimal static-library-only build succeeds with the PCRE2 archive removed.
+The final documentation commit is rechecked by the same CI matrix before delivery.
 
 ## Compatibility details
 
@@ -114,7 +120,8 @@ https://shadowsocks.org/doc/sip022.html for the provider and protocol contracts.
   system-mode static/shared consumers also link and run. System static exports
   require the exact Mbed TLS version used at build time to avoid an ABI mismatch.
 - Windows x86-64: programs, both libraries, all tests and installed consumers
-  cross-compile with Zig. Native Windows execution remains a completion gate.
+  cross-compile with Zig. Native UCRT64 execution and installed consumers pass
+  with runtime DLL lookup restricted to the installation and Windows system paths.
 - SIP003 fixture: real TCP forwarding, UDP bypass, and child cleanup pass through
   the actual programs. DNS cancellation covers outstanding A/AAAA requests,
   exactly-once callbacks/free callbacks and reinitialization after shutdown.
