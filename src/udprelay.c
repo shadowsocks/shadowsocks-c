@@ -904,7 +904,7 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
 
     if (buf->len > packet_size) {
         if (verbose) {
-            LOGI("[udp] remote_recv_sendto fragmentation, MTU at least be: " SSIZE_FMT, buf->len + PACKET_HEADER_SIZE);
+            LOGI("[udp] remote_recv_sendto fragmentation, MTU at least be: " SIZE_FMT, buf->len + PACKET_HEADER_SIZE);
         }
     }
 
@@ -1029,7 +1029,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
         goto CLEAN_UP;
     } else if (buf->len > packet_size) {
         if (verbose) {
-            LOGI("[udp] UDP server_recv_recvmsg fragmentation, MTU at least be: " SSIZE_FMT,
+            LOGI("[udp] UDP server_recv_recvmsg fragmentation, MTU at least be: " SIZE_FMT,
                  buf->len + PACKET_HEADER_SIZE);
         }
     }
@@ -1366,7 +1366,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 
     if (buf->len > packet_size) {
         if (verbose) {
-            LOGI("[udp] server_recv_sendto fragmentation, MTU at least be: " SSIZE_FMT, buf->len + PACKET_HEADER_SIZE);
+            LOGI("[udp] server_recv_sendto fragmentation, MTU at least be: " SIZE_FMT, buf->len + PACKET_HEADER_SIZE);
         }
     }
 
@@ -1385,7 +1385,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 
     if (buf->len - addr_header_len > packet_size) {
         if (verbose) {
-            LOGI("[udp] server_recv_sendto fragmentation, MTU at least be: " SSIZE_FMT,
+            LOGI("[udp] server_recv_sendto fragmentation, MTU at least be: " SIZE_FMT,
                  buf->len - addr_header_len + PACKET_HEADER_SIZE);
         }
     }

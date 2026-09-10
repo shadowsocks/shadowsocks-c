@@ -62,7 +62,7 @@ if(SS_MINIMAL)
     set(SS_ENABLE_REGEX OFF)
     set(SS_ENABLE_PLUGINS OFF)
     set(SS_ENABLE_LEGACY OFF)
-    set(WITH_SS_MANAGER OFF CACHE BOOL "Build ss-manager" FORCE)
+    set(WITH_SS_MANAGER OFF)
 endif()
 include(cmake/Dependencies.cmake)
 

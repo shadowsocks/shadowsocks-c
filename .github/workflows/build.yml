@@ -43,7 +43,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev
           sudo apt-get install -y --no-install-recommends \
-            build-essential debhelper dpkg-dev fakeroot asciidoc-base xmlto pkg-config
+            build-essential cmake debhelper dpkg-dev fakeroot asciidoc-base xmlto pkg-config
 
       - name: Debian package build test
         run: bash tests/test_deb_build.sh

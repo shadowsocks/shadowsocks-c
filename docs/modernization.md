@@ -19,7 +19,7 @@ for unavailable functionality. Linux redirection/netfilter remains Linux-only.
       fail the required CI job and are reported as skips in optional local runs.
 - [x] Target-scoped CMake, separate programs/static/shared library options,
       reliable dependency discovery, installation/export metadata and presets.
-- [ ] Offline bundled dependency mode and source release archive; explicit system
+- [x] Offline bundled dependency mode and source release archive; explicit system
       mode for distro packages; checksums, licenses, versions, update procedure.
 - [x] Remove libcork: address parsing, lists, hash maps, subprocess lifecycle.
 - [x] Remove libipset: bounded IPv4/IPv6 prefix storage with insertion/deletion;
@@ -33,14 +33,13 @@ for unavailable functionality. Linux redirection/netfilter remains Linux-only.
 - [ ] Complete sanitizers/static analysis, compatibility and stress validation,
       release archive offline build, installed consumer, before/after report.
 
-## Initial evidence (2026-09-10)
+## Baseline provenance
 
-Base commit: 8fe386b. Existing libcork checkout is 074e074b, different from the
-superproject gitlink; it has no uncommitted files and is preserved during work.
-The existing build passed all 13 unit tests. Fresh shared-dependency Release
-build with the first CMake changes also passed all 13 unit tests.
-The initial baseline stress/interop runs collided on a shared port; discard
-those measurements and repeat serially before reporting a baseline.
+Base commit: 8fe386b. Its libcork checkout is 074e074b, different from the
+superproject gitlink; this was pre-existing local state. That checkout, libipset
+and libbloom are preserved and ignored locally. Fresh baseline builds use those
+same checkouts, with no modernization changes applied to baseline source.
+The fresh baseline passes all 13 original unit tests.
 
 ## Build interface
 
@@ -64,41 +63,25 @@ The archive includes tracked working-tree contents (so uncommitted changes are
 included); record the final commit with a published release and use a clean
 checkout for publishing. No submodules are accepted in the archive.
 
-## Verified implementation evidence
+## Platform validation
 
-- Bundled macOS arm64 build: 17 project tests and 14 upstream libsodium tests
-  pass with the crypto-only Mbed TLS configuration.
-- Minimal profile: 15 project tests plus 14 upstream libsodium tests pass.
-- Linux arm64 glibc: built inside Docker with networking disabled, 29 tests
-  passed before the later literal-rule and crypto-profile changes. Repeat the
-  final matrix before marking the full platform requirement complete.
-- ASan + UBSan: 29 tests passed before the most recent changes; final rerun pending.
-- Real shadowsocks-rust 1.24.0 interoperability passes six AEAD methods in both
-  directions, each with three simultaneous TCP streams (up to 1 MiB) and four
-  UDP payload sizes (1, 128, 1200, 4096 bytes).
-- The former curl harness obeyed `no_proxy`, producing false positives by
-  bypassing SOCKS. Its historical results are not valid interoperability proof.
-  The Python replacement opens SOCKS5 sockets explicitly and reports missing
-  peers as skip 77, or failure under SS_REQUIRE_INTEROP=1.
-- That replacement exposed truncation of 4 KiB UDP datagrams in the MTU-sized
-  receive buffer. The relay now receives full datagrams before authentication.
-- The sanitizer baseline found null-URI output was uninitialized in ss_url_parse;
-  the output is now cleared before rejecting null input, with a poisoned-output
-  regression assertion.
-- `otool -L` on bundled ss-server lists only macOS libSystem and libresolv.
-- An independent CMake consumer linked and ran against the installed bundled
-  static library. Shared/system consumers and relocation remain to be tested.
-- Existing libcork, libipset and libbloom directories are preserved locally and
-  ignored. Gitlinks are removed; archives no longer require those checkouts.
+CI on commit 9623456 passes Linux glibc x86-64/ARM64 and macOS full/minimal
+builds, real TCP/UDP relay, SIP003 cleanup (full profile), and relocated installed
+consumers. FreeBSD 14.3 passes compilation, unit/vendor tests and real TCP/UDP
+relay. Alpine/musl builds the release archive with networking disabled and passes
+all unit/vendor and TCP/UDP tests. Linux Valgrind, ASan/UBSan, coverage and the
+required shadowsocks-rust interoperability job pass, as does clang-tidy-18.
 
-## Remaining completion gates
+Native Windows and Debian packaging remain under validation. Subsequent fixes
+address Windows CMake drive paths and printf size formats, explicit FreeBSD
+socket headers, Alpine fortify diagnostics, and Debian install metadata/tooling.
+Windows cross-builds include both libraries and installed consumers.
 
-Finish Windows MinGW and FreeBSD runtime support/CI, Linux musl and x86-64,
-platform socket/error/clock isolation, DNS cancellation and plugin integration
-coverage, final differential IP set comparison, installation relocation and
-system/shared builds, source-archive offline verification, complete local lint
-and tests, and the final binary/memory/TCP/UDP before/after report. Assess MSVC
-constraints explicitly. Do not infer these from the successful macOS build.
+A committed source archive also builds locally on Linux arm64 with networking
+and Python discovery disabled, passing all 31 unit/vendor tests and six-method
+TCP/UDP plus SIP003 tests. The source release itself needs no Git or Python to
+compile. Final archive regeneration and current-head matrix verification remain
+completion gates.
 
 ## Compatibility details
 
@@ -113,7 +96,7 @@ legacy AES/Camellia stream modes prevent a transparent libsodium-only switch.
 See https://doc.libsodium.org/secret-key_cryptography/aead/aes-256-gcm and
 https://shadowsocks.org/doc/sip022.html for the provider and protocol contracts.
 
-## Final local validation and remaining runtime gates
+## Local validation
 
 - Fresh base-commit build (8fe386b) passes all 13 original unit tests, using the
   preserved dependency checkouts described above. Both its system-shared and
@@ -131,7 +114,7 @@ https://shadowsocks.org/doc/sip022.html for the provider and protocol contracts.
   system-mode static/shared consumers also link and run. System static exports
   require the exact Mbed TLS version used at build time to avoid an ABI mismatch.
 - Windows x86-64: programs, both libraries, all tests and installed consumers
-  cross-compile with Zig. Native Windows and FreeBSD CI results are still pending.
+  cross-compile with Zig. Native Windows execution remains a completion gate.
 - SIP003 fixture: real TCP forwarding, UDP bypass, and child cleanup pass through
   the actual programs. DNS cancellation covers outstanding A/AAAA requests,
   exactly-once callbacks/free callbacks and reinitialization after shutdown.

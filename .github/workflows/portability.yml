@@ -81,6 +81,11 @@ jobs:
             cmake --build build --parallel 4
             ctest --test-dir build -L 'unit|vendor' --output-on-failure --no-tests=error
             python3 tests/interop.py --self --bin build/bin
+            cmake --install build --prefix "$PWD/install"
+            cmake -S tests/consumer -B consumer -G Ninja -DCMAKE_PREFIX_PATH="$PWD/install"
+            cmake --build consumer
+            ./consumer/consumer_static
+            ./consumer/consumer_shared
 
   offline-musl:
     runs-on: ubuntu-latest
