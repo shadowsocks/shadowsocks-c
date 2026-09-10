@@ -57,7 +57,8 @@ jobs:
           cmake -S . -B build -G Ninja
           cmake --build build --parallel 4
           ctest --test-dir build -L 'unit|vendor' --output-on-failure --no-tests=error
-          python tests/interop.py --self --bin build/bin
+          objdump -p build/bin/ss-server.exe | sed -n '/DLL Name/p'
+          python tests/interop.py --self --bin build/bin --isolate-windows-runtime
       - name: Installed consumers
         run: |
           cmake --install build --prefix "$PWD/install"

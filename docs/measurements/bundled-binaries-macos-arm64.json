@@ -1,5 +1,5 @@
 {
-  "commit": "feature/self-contained-portable-c (working tree)",
+  "commit": "46d3acd9d6b72e088b688c2f84aae5c0466885d8",
   "platform": "Darwin arm64",
   "binaries": {
     "ss-local": {

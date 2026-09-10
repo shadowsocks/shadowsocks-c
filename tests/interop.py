@@ -137,7 +137,7 @@ def wait_ready(process, port):
 
 
 @contextlib.contextmanager
-def peers(commands, ports):
+def peers(commands, ports, environment=None):
     processes = []
     with tempfile.TemporaryDirectory(prefix="ss-interop-") as temp, contextlib.ExitStack() as stack:
         logs = []
@@ -146,7 +146,7 @@ def peers(commands, ports):
                 path = Path(temp) / f"peer-{index}.log"
                 log = stack.enter_context(path.open("wb"))
                 logs.append(path)
-                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT)
+                process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=environment)
                 processes.append(process)
                 wait_ready(process, port)
             yield
@@ -172,9 +172,18 @@ def main():
     parser.add_argument("--method", help="run one cipher")
     parser.add_argument("--bin", default=os.environ.get("SS_BIN_DIR", "build/bin"), help="program directory")
     parser.add_argument("--plugin", help="SIP003 fixture executable (requires --self)")
+    parser.add_argument("--isolate-windows-runtime", action="store_true",
+                        help="remove MSYS2/toolchain DLL directories from child PATH")
     args = parser.parse_args()
     if args.plugin and not args.self:
         parser.error("--plugin requires --self")
+    environment = None
+    if args.isolate_windows_runtime:
+        if os.name != "nt":
+            parser.error("--isolate-windows-runtime requires Windows")
+        environment = os.environ.copy()
+        system_root = environment["SystemRoot"]
+        environment["PATH"] = os.pathsep.join((system_root, os.path.join(system_root, "System32")))
     binary_dir = Path(args.bin).resolve()
     suffix = ".exe" if os.name == "nt" else ""
     local, server = [str(binary_dir / (name + suffix)) for name in ("ss-local", "ss-server")]
@@ -219,7 +228,7 @@ def main():
                     elif direction.startswith("Rust client"):
                         commands[1] = [rust_local, "-b", f"127.0.0.1:{local_port}", "-s", f"127.0.0.1:{server_port}", "-k", psk, "-m", method, "-U"]
                     try:
-                        with peers(commands, [server_port, local_port]):
+                        with peers(commands, [server_port, local_port], environment):
                             for marker in markers:
                                 deadline = time.monotonic() + 10
                                 while not marker.exists() and time.monotonic() < deadline:

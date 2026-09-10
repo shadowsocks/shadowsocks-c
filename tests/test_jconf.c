@@ -9,8 +9,6 @@
 #include "test_helpers.h"
 #ifndef _WIN32
 #include <sys/wait.h>
-#else
-#include <process.h>
 #endif
 
 int verbose = 0;
@@ -151,9 +149,21 @@ test_read_jconf_rejects_out_of_range_int_options(void)
     fclose(f);
 
 #ifdef _WIN32
-    const char *args[] = {test_executable, "--read-config", path, NULL};
-    intptr_t status = _spawnv(_P_WAIT, test_executable, args);
-    assert(status > 0);
+    char command[3 * 4096];
+    assert(snprintf(command, sizeof(command), "\"%s\" --read-config \"%s\"",
+                    test_executable, path) < (int)sizeof(command));
+    STARTUPINFOA startup = {0};
+    PROCESS_INFORMATION child = {0};
+    startup.cb = sizeof(startup);
+    assert(CreateProcessA(test_executable, command, NULL, NULL, FALSE, 0,
+                          NULL, NULL, &startup, &child));
+    CloseHandle(child.hThread);
+    assert(WaitForSingleObject(child.hProcess, 10000) == WAIT_OBJECT_0);
+    DWORD status;
+    assert(GetExitCodeProcess(child.hProcess, &status));
+    CloseHandle(child.hProcess);
+    /* FATAL exits with -1, which is a valid nonzero DWORD exit status. */
+    assert(status != 0);
 #else
     pid_t pid = fork();
     assert(pid >= 0);
