@@ -307,4 +307,8 @@
 /* Define as `fork' if `vfork' does not work. */
 #cmakedefine vfork
 
+#cmakedefine01 SS_ENABLE_REGEX
+#cmakedefine01 SS_ENABLE_PLUGINS
+#cmakedefine01 SS_ENABLE_LEGACY
+
 #endif

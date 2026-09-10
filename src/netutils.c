@@ -25,7 +25,8 @@
 #include <math.h>
 #include <stdlib.h>
 
-#include <libcork/core.h>
+#include "core.h"
+#include <string.h>
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -57,7 +58,7 @@ static const char valid_label_bytes[] =
     "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
 
 static int
-parse_numeric_port(const char *port, in_port_t *port_out)
+parse_numeric_port(const char *port, uint16_t *port_out)
 {
     char *endptr;
     unsigned long value;
@@ -72,7 +73,7 @@ parse_numeric_port(const char *port, in_port_t *port_out)
         return -1;
     }
 
-    *port_out = (in_port_t)value;
+    *port_out = (uint16_t)value;
     return 0;
 }
 
@@ -80,7 +81,7 @@ int
 set_reuseport(int socket)
 {
     int opt = 1;
-    return setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
+    return ss_setsockopt(socket, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
 }
 
 size_t
@@ -101,7 +102,7 @@ setinterface(int socket_fd, const char *interface_name)
     struct ifreq interface;
     memset(&interface, 0, sizeof(struct ifreq));
     strncpy(interface.ifr_name, interface_name, IFNAMSIZ - 1);
-    int res = setsockopt(socket_fd, SOL_SOCKET, SO_BINDTODEVICE, &interface,
+    int res = ss_setsockopt(socket_fd, SOL_SOCKET, SO_BINDTODEVICE, &interface,
                          sizeof(struct ifreq));
     return res;
 }
@@ -114,8 +115,8 @@ parse_local_addr(struct sockaddr_storage *storage_v4,
                  const char *host)
 {
     if (host != NULL) {
-        struct cork_ip ip;
-        if (cork_ip_init(&ip, host) != -1) {
+        struct ss_ip ip;
+        if (ss_ip_init(&ip, host) != -1) {
             if (ip.version == 4) {
                 memset(storage_v4, 0, sizeof(struct sockaddr_storage));
                 struct sockaddr_in *addr = (struct sockaddr_in *)storage_v4;
@@ -153,9 +154,9 @@ get_sockaddr(char *host, char *port,
              struct sockaddr_storage *storage, int block,
              int ipv6first)
 {
-    struct cork_ip ip;
-    if (cork_ip_init(&ip, host) != -1) {
-        in_port_t numeric_port = 0;
+    struct ss_ip ip;
+    if (ss_ip_init(&ip, host) != -1) {
+        uint16_t numeric_port = 0;
         if (port != NULL && parse_numeric_port(port, &numeric_port) == -1) {
             LOGE("invalid port: %s", port);
             return -1;

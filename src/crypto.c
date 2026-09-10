@@ -150,6 +150,7 @@ crypto_init(const char *password, const char *key, const char *method)
 #endif
 
     if (method != NULL) {
+#if SS_ENABLE_LEGACY
         for (i = 0; i < STREAM_CIPHER_NUM; i++)
             if (strcmp(method, supported_stream_ciphers[i]) == 0) {
                 m = i;
@@ -174,6 +175,7 @@ crypto_init(const char *password, const char *key, const char *method)
             return crypto;
         }
 
+#endif
         for (i = 0; i < AEAD_CIPHER_NUM; i++)
             if (strcmp(method, supported_aead_ciphers[i]) == 0) {
                 m = i;
@@ -203,7 +205,7 @@ crypto_init(const char *password, const char *key, const char *method)
         }
     }
 
-    LOGE("invalid cipher name: %s", method);
+    LOGE("unsupported or disabled cipher: %s", method);
     return NULL;
 }
 

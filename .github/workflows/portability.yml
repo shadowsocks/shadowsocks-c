@@ -1,0 +1,104 @@
+name: portability
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  bundled:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-latest]
+        minimal: ['OFF', 'ON']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build without installed third-party development packages
+        run: |
+          cmake -S . -B build -DSS_MINIMAL=${{ matrix.minimal }}
+          cmake --build build --parallel 4
+          ctest --test-dir build -L 'unit|vendor' --output-on-failure --no-tests=error
+      - name: Real TCP and UDP relay
+        run: python3 tests/interop.py --self --bin build/bin
+      - name: SIP003 transport and child cleanup
+        if: matrix.minimal == 'OFF'
+        run: python3 tests/interop.py --self --bin build/bin --plugin tests/sip003_fixture.py
+      - name: Relocated installation and public API consumers
+        run: |
+          cmake --install build --prefix "$PWD/install"
+          mv install relocated
+          cmake -S tests/consumer -B consumer -DCMAKE_PREFIX_PATH="$PWD/relocated"
+          cmake --build consumer
+          ./consumer/consumer_static
+          ./consumer/consumer_shared
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-python
+      - name: Build and run native Windows binaries
+        run: |
+          cmake -S . -B build -G Ninja
+          cmake --build build --parallel 4
+          ctest --test-dir build -L 'unit|vendor' --output-on-failure --no-tests=error
+          python tests/interop.py --self --bin build/bin
+      - name: Installed consumers
+        run: |
+          cmake --install build --prefix "$PWD/install"
+          cmake -S tests/consumer -B consumer -G Ninja -DCMAKE_PREFIX_PATH="$PWD/install"
+          cmake --build consumer
+          export PATH="$PWD/install/bin:$PATH"
+          ./consumer/consumer_static.exe
+          ./consumer/consumer_shared.exe
+
+  freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: vmactions/freebsd-vm@v1
+        with:
+          release: '14.3'
+          usesh: true
+          prepare: pkg install -y cmake ninja python3
+          run: |
+            cmake -S . -B build -G Ninja
+            cmake --build build --parallel 4
+            ctest --test-dir build -L 'unit|vendor' --output-on-failure --no-tests=error
+            python3 tests/interop.py --self --bin build/bin
+
+  offline-musl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Source archive
+        run: python3 scripts/source_archive.py release/shadowsocks-libev.tar.gz
+      - name: Prepare compiler image
+        run: |
+          printf 'FROM alpine:3.24\nRUN apk add --no-cache build-base cmake python3 linux-headers\n' > /tmp/ss-toolchain.Dockerfile
+          docker build -t ss-toolchain -f /tmp/ss-toolchain.Dockerfile /tmp
+      - name: Build release archive with network disabled
+        run: |
+          docker run --rm --network none -v "$PWD/release:/release:ro" ss-toolchain sh -ec '
+            mkdir /src
+            tar xzf /release/shadowsocks-libev.tar.gz -C /src --strip-components=1
+            cmake -S /src -B /build -DCMAKE_DISABLE_FIND_PACKAGE_Python3=TRUE
+            cmake --build /build --parallel 4
+            ctest --test-dir /build -L "unit|vendor" --output-on-failure --no-tests=error
+            python3 /src/tests/interop.py --self --bin /build/bin
+          '

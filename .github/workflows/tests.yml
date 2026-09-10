@@ -15,8 +15,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
@@ -47,21 +45,19 @@ jobs:
 
       - name: Stress test
         run: |
-          python3 tests/stress_test.py --bin build/shared/bin/ --size 10
+          python3 tests/stress_test.py --bin build/bin/ --size 10
 
       - name: ss-redir transparent proxy test (QEMU)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get install -y qemu-system-x86
-          bash tests/test_redir_qemu.sh build/shared/bin/
+          bash tests/test_redir_qemu.sh build/bin/
         timeout-minutes: 8
 
   asan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Install dependencies
         run: |
@@ -78,7 +74,7 @@ jobs:
         run: ctest --test-dir build -LE memcheck --output-on-failure --no-tests=error
 
       - name: Stress test (ASan + UBSan)
-        run: python3 tests/stress_test.py --bin build/shared/bin/ --size 10
+        run: python3 tests/stress_test.py --bin build/bin/ --size 10
 
   clang-tidy:
     runs-on: ubuntu-latest
@@ -91,8 +87,6 @@ jobs:
       MAX_WARNINGS: 0
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Install dependencies
         run: |
@@ -128,8 +122,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Install dependencies
         run: |
@@ -145,7 +137,7 @@ jobs:
       - name: Run tests
         run: |
           ctest --test-dir build -LE memcheck --output-on-failure --no-tests=error
-          python3 tests/stress_test.py --bin build/shared/bin/ --size 10
+          python3 tests/stress_test.py --bin build/bin/ --size 10
 
       - name: Generate coverage report
         run: |
@@ -162,3 +154,19 @@ jobs:
         with:
           name: coverage-html
           path: build/coverage-html/
+
+  interop:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install dependencies and independent peer
+        run: brew install mbedtls@3 libsodium libev c-ares pcre2 shadowsocks-rust
+      - name: Build
+        run: |
+          cmake -S . -B build -DSS_DEPENDENCY_MODE=system -DWITH_STATIC=OFF
+          cmake --build build --parallel
+      - name: Required interoperability
+        env:
+          SS_REQUIRE_INTEROP: '1'
+          SS_BIN_DIR: build/bin
+        run: bash tests/test_interop_rust.sh

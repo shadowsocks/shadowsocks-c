@@ -24,7 +24,7 @@
 #define _SERVER_H
 
 #include <time.h>
-#include <libcork/ds.h>
+#include "core.h"
 
 #ifdef HAVE_LIBEV_EV_H
 #include <libev/ev.h>
@@ -33,7 +33,7 @@
 #endif
 
 #ifdef __MINGW32__
-#include "winsock.h"
+#include "ss_windows.h"
 #endif
 
 #include "crypto.h"
@@ -89,7 +89,7 @@ typedef struct server {
 
     struct query *query;
 
-    struct cork_dllist_item entries;
+    struct ss_list_item entries;
 #ifdef USE_NFCONNTRACK_TOS
     struct dscptracker *tracker;
 #endif

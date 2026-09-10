@@ -157,6 +157,7 @@ test_rejects_malformed(void)
     };
 
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        memset(&u, 0xa5, sizeof(u));
         assert(ss_url_parse(bad[i], &u) == -1);
         /* a rejected parse must leave nothing behind to free */
         assert(u.method == NULL && u.host == NULL && u.port == NULL);

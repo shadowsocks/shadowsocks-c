@@ -16,17 +16,12 @@ RUN set -x \
  && apk add --no-cache --virtual .build-deps \
       build-base \
       cmake \
-      c-ares-dev \
       libcap \
-      libev-dev \
-      libsodium-dev \
       linux-headers \
-      mbedtls-dev \
-      pcre2-dev \
  # Build & install
  && cd /tmp/repo \
  && mkdir -p build && cd build \
- && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_TESTING=OFF -DWITH_STATIC=OFF -DCMAKE_BUILD_TYPE=Release \
+ && cmake .. -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_TESTING=OFF -DSS_BUILD_STATIC_LIBRARY=OFF -DSS_BUILD_SHARED_LIBRARY=OFF -DCMAKE_BUILD_TYPE=Release \
  && make -j$(getconf _NPROCESSORS_ONLN) \
  && make install \
  && cd /usr/local/bin \

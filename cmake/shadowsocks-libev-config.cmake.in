@@ -1,0 +1,31 @@
+@PACKAGE_INIT@
+
+if(@SS_BUILD_SHARED_LIBRARY@ AND NOT TARGET shadowsocks::shared)
+    add_library(shadowsocks::shared SHARED IMPORTED)
+    set_target_properties(shadowsocks::shared PROPERTIES
+        IMPORTED_LOCATION "@PACKAGE_CMAKE_INSTALL_LIBDIR@/@SS_SHARED_FILENAME@"
+        INTERFACE_INCLUDE_DIRECTORIES "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+    if(WIN32)
+        set_target_properties(shadowsocks::shared PROPERTIES
+            IMPORTED_LOCATION "@PACKAGE_CMAKE_INSTALL_BINDIR@/@SS_SHARED_FILENAME@"
+            IMPORTED_IMPLIB "@PACKAGE_CMAKE_INSTALL_LIBDIR@/@SS_SHARED_IMPLIB@")
+    endif()
+endif()
+if(@SS_BUILD_STATIC_LIBRARY@ AND NOT TARGET shadowsocks::static)
+    include(CMakeFindDependencyMacro)
+    find_dependency(Threads)
+    @SS_SYSTEM_DEPENDENCIES@
+    add_library(shadowsocks::static STATIC IMPORTED)
+    set_target_properties(shadowsocks::static PROPERTIES
+        IMPORTED_LOCATION "@PACKAGE_CMAKE_INSTALL_LIBDIR@/@SS_STATIC_FILENAME@"
+        INTERFACE_INCLUDE_DIRECTORIES "@PACKAGE_CMAKE_INSTALL_INCLUDEDIR@")
+    include("${CMAKE_CURRENT_LIST_DIR}/shadowsocks-private.cmake")
+endif()
+if(NOT TARGET shadowsocks::shadowsocks)
+    if(TARGET shadowsocks::shared)
+        add_library(shadowsocks::shadowsocks ALIAS shadowsocks::shared)
+    elseif(TARGET shadowsocks::static)
+        add_library(shadowsocks::shadowsocks ALIAS shadowsocks::static)
+    endif()
+endif()
+check_required_components(shadowsocks-libev)

@@ -391,7 +391,7 @@ stream_encrypt(buffer_t *plaintext, cipher_ctx_t *cipher_ctx, size_t capacity)
         }
         crypto_stream_xor_ic((uint8_t *)(ciphertext->data + nonce_len),
                              (const uint8_t *)plaintext->data,
-                             (uint64_t)(plaintext->len + padding),
+                             (uint64_t)plaintext->len + padding,
                              (const uint8_t *)cipher_ctx->nonce,
                              cipher_ctx->counter / SODIUM_BLOCK_SIZE, cipher->key,
                              cipher->method);
@@ -557,7 +557,7 @@ stream_decrypt(buffer_t *ciphertext, cipher_ctx_t *cipher_ctx, size_t capacity)
         }
         crypto_stream_xor_ic((uint8_t *)plaintext->data,
                              (const uint8_t *)(ciphertext->data),
-                             (uint64_t)(ciphertext->len + padding),
+                             (uint64_t)ciphertext->len + padding,
                              (const uint8_t *)cipher_ctx->nonce,
                              cipher_ctx->counter / SODIUM_BLOCK_SIZE, cipher->key,
                              cipher->method);

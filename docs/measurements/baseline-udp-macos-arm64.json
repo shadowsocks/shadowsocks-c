@@ -1,0 +1,74 @@
+[
+  {
+    "cipher": "aes-128-gcm",
+    "trial": 0,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.25436816699948395,
+    "payload_mbps": 75.4811430474276
+  },
+  {
+    "cipher": "aes-128-gcm",
+    "trial": 1,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.2318156250003085,
+    "payload_mbps": 82.8244429165396
+  },
+  {
+    "cipher": "aes-128-gcm",
+    "trial": 2,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.24796225000136474,
+    "payload_mbps": 77.43114123175735
+  },
+  {
+    "cipher": "aes-256-gcm",
+    "trial": 0,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.2386028750006517,
+    "payload_mbps": 80.46843526067134
+  },
+  {
+    "cipher": "aes-256-gcm",
+    "trial": 1,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.2360522500002844,
+    "payload_mbps": 81.33792412475148
+  },
+  {
+    "cipher": "aes-256-gcm",
+    "trial": 2,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.23466012499920907,
+    "payload_mbps": 81.82046268007704
+  },
+  {
+    "cipher": "chacha20-ietf-poly1305",
+    "trial": 0,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.24850704099844734,
+    "payload_mbps": 77.26139236481416
+  },
+  {
+    "cipher": "chacha20-ietf-poly1305",
+    "trial": 1,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.24412816600124643,
+    "payload_mbps": 78.64721352923273
+  },
+  {
+    "cipher": "chacha20-ietf-poly1305",
+    "trial": 2,
+    "packets": 2000,
+    "payload_bytes": 1200,
+    "seconds": 0.24165658300080395,
+    "payload_mbps": 79.45159102053563
+  }
+]

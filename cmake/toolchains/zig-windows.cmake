@@ -1,0 +1,20 @@
+# Cross-compile the C project from a Unix host without Docker or a MinGW SDK.
+# cmake -S . -B build-windows -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/zig-windows.cmake
+set(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR AMD64)
+find_program(SS_ZIG_EXECUTABLE NAMES zig REQUIRED)
+set(CMAKE_C_COMPILER "${SS_ZIG_EXECUTABLE}" cc -target x86_64-windows-gnu)
+# CMake's archive tools accept an executable path, not an argv list.
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/zig-tools")
+foreach(tool ar ranlib)
+    set(wrapper "${CMAKE_BINARY_DIR}/zig-tools/${tool}")
+    file(WRITE "${wrapper}" "#!/bin/sh\nexec \"${SS_ZIG_EXECUTABLE}\" ${tool} \"$@\"\n")
+    file(CHMOD "${wrapper}" PERMISSIONS OWNER_READ OWNER_WRITE OWNER_EXECUTE GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE)
+    set(CMAKE_${tool} "${wrapper}")
+endforeach()
+set(CMAKE_AR "${CMAKE_BINARY_DIR}/zig-tools/ar")
+set(CMAKE_RANLIB "${CMAKE_BINARY_DIR}/zig-tools/ranlib")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)

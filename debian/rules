@@ -11,7 +11,7 @@ override_dh_auto_install:
 	dh_auto_install
 
 override_dh_auto_configure:
-	dh_auto_configure -- -DWITH_STATIC=OFF
+	dh_auto_configure -- -DSS_DEPENDENCY_MODE=system -DWITH_STATIC=OFF -DWITH_DOC_MAN=ON -DSS_INSTALL_TOOLS=ON
 
 override_dh_installchangelogs:
 	dh_installchangelogs -XChanges

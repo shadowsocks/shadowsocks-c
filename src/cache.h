@@ -30,19 +30,13 @@
 
 #include "uthash.h"
 
-#ifdef HAVE_LIBEV_EV_H
-#include <libev/ev.h>
-#else
-#include <ev.h>
-#endif
-
 /**
  * A cache entry
  */
 struct cache_entry {
     char *key;         /**<The key */
     void *data;        /**<Payload */
-    ev_tstamp ts;    /**<Timestamp */
+    double ts;    /**<Timestamp */
     UT_hash_handle hh; /**<Hash Handle for uthash */
 };
 
@@ -58,7 +52,7 @@ struct cache {
 int cache_create(struct cache **dst, const size_t capacity,
                  void (*free_cb)(void *key, void *element));
 int cache_delete(struct cache *cache, int keep_data);
-int cache_clear(struct cache *cache, ev_tstamp age);
+int cache_clear(struct cache *cache, double age);
 int cache_lookup(struct cache *cache, char *key, size_t key_len, void *result);
 int cache_insert(struct cache *cache, char *key, size_t key_len, void *data);
 int cache_remove(struct cache *cache, char *key, size_t key_len);

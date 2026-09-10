@@ -1,0 +1,27 @@
+{
+  "commit": "feature/self-contained-portable-c (working tree)",
+  "platform": "Darwin arm64",
+  "binaries": {
+    "ss-local": {
+      "bytes": 416424,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+        "\t/usr/lib/libresolv.9.dylib (compatibility version 1.0.0, current version 1.0.0)"
+      ]
+    },
+    "ss-server": {
+      "bytes": 622024,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+        "\t/usr/lib/libresolv.9.dylib (compatibility version 1.0.0, current version 1.0.0)"
+      ]
+    },
+    "ss-tunnel": {
+      "bytes": 397704,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+        "\t/usr/lib/libresolv.9.dylib (compatibility version 1.0.0, current version 1.0.0)"
+      ]
+    }
+  }
+}

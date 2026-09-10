@@ -24,7 +24,8 @@
 #define _MANAGER_H
 
 #include <time.h>
-#include <libcork/ds.h>
+#include "core.h"
+#include "uthash.h"
 
 #ifdef HAVE_LIBEV_EV_H
 #include <libev/ev.h>
@@ -66,6 +67,7 @@ struct manager_ctx {
 };
 
 struct server {
+    UT_hash_handle hh;
     char port[8];
     char password[128];
     char fast_open[8];

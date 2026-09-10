@@ -23,7 +23,7 @@
 #ifndef _LOCAL_H
 #define _LOCAL_H
 
-#include <libcork/ds.h>
+#include "core.h"
 
 #ifdef HAVE_LIBEV_EV_H
 #include <libev/ev.h>
@@ -32,7 +32,7 @@
 #endif
 
 #ifdef __MINGW32__
-#include "winsock.h"
+#include "ss_windows.h"
 #endif
 
 #include "crypto.h"
@@ -72,7 +72,7 @@ typedef struct server {
 
     ev_timer delayed_connect_watcher;
 
-    struct cork_dllist_item entries;
+    struct ss_list_item entries;
 } server_t;
 
 typedef struct remote_ctx {

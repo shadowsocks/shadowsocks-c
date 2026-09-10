@@ -30,7 +30,7 @@
 #endif
 
 #ifdef __MINGW32__
-#include "winsock.h"
+#include "ss_windows.h"
 #endif
 
 #include "crypto.h"

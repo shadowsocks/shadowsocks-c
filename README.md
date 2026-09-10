@@ -63,7 +63,7 @@ sudo snap install shadowsocks-libev --edge
     + [Run](#run)
     + [Run as client](#run-as-client)
 - [OpenWRT](#openwrt)
-- [OS X](#os-x)
+- [macOS](#macos)
 - [Windows (MinGW)](#windows-mingw)
 - [Docker](#docker)
 
@@ -71,46 +71,51 @@ sudo snap install shadowsocks-libev --edge
 
 ### Build from source (CMake)
 
-shadowsocks-libev uses CMake as its sole build system. Start by pulling submodules:
+The default build uses pinned sources included in this repository. It needs a
+C11 compiler, CMake 3.20+, and Make or Ninja. No Git submodules, dependency
+package installations, or network access are needed for configuration/build.
+Python is used only by integration tests; documentation generation is optional.
 
-```bash
-git submodule update --init --recursive
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --parallel
+ctest --test-dir build -L 'unit|vendor' --output-on-failure
+cmake --install build --prefix /your/install/prefix
 ```
 
-Then build:
+Programs are in `build/bin/`. Bundled binaries link to platform runtime
+libraries; they do not require separately installed third-party libraries.
 
-```bash
-mkdir -p build && cd build
-cmake ..
-make
-sudo make install
-```
+For a smaller build, use `-DSS_MINIMAL=ON`. It excludes PCRE2 regex, plugin
+subprocesses, the manager, and legacy stream ciphers. Minimal ACLs support
+IPv4/IPv6 CIDRs, `full:example.com` for exact domains, and
+`suffix:example.com` for the apex and subdomains. Literal matches ignore ASCII
+case and respect label boundaries. Unsupported regex rules are rejected.
 
-To run unit tests:
+Distribution packages can use `-DSS_DEPENDENCY_MODE=system -DWITH_STATIC=OFF`
+with libev, c-ares, libsodium, Mbed TLS 3.x, and PCRE2 development packages.
+Use `-DCMAKE_PREFIX_PATH=/opt/homebrew/opt/mbedtls@3` when needed on macOS.
 
-```bash
-cd build
-ctest --output-on-failure
-```
-
-#### CMake options
-
-For a complete list of available options, run `cmake -LH` from a build directory.
-Commonly used options:
-
-| Option | Default | Description |
+| Option | Default | Purpose |
 |---|---|---|
-| `-DWITH_EMBEDDED_SRC=OFF` | `ON` | Use system libcork/libipset/libbloom instead of bundled submodules |
-| `-DWITH_DOC_MAN=OFF` | `ON` | Skip man page generation (removes asciidoc/xmlto dependency) |
-| `-DBUILD_TESTING=OFF` | `ON` | Disable unit tests |
-| `-DENABLE_CONNMARKTOS=ON` | `OFF` | Linux netfilter conntrack QoS support |
-| `-DENABLE_NFTABLES=ON` | `OFF` | nftables firewall integration |
+| `SS_DEPENDENCY_MODE` | `bundled` | `bundled` sources or `system` libraries |
+| `WITH_STATIC` | `ON` | Link dependency archives; system mode also supports shared dependencies |
+| `SS_BUILD_EXECUTABLES` | `ON` | Command-line tools |
+| `SS_BUILD_STATIC_LIBRARY` | `ON` | Static embedding library with installed dependency archives |
+| `SS_BUILD_SHARED_LIBRARY` | `ON` | Shared embedding library |
+| `SS_MINIMAL` | `OFF` | Disable regex, plugins, manager, and legacy stream ciphers |
+| `SS_ENABLE_REGEX` / `SS_ENABLE_PLUGINS` / `SS_ENABLE_LEGACY` | `ON` | Individual compatibility features |
+| `WITH_DOC_MAN` / `WITH_DOC_HTML` | `OFF` | Generate documentation (requires asciidoc; man pages also need xmlto) |
+| `SS_INSTALL_TOOLS` | `OFF` | Install platform shell helpers |
+| `ENABLE_SANITIZERS` | `OFF` | AddressSanitizer and UndefinedBehaviorSanitizer |
+| `ENABLE_CONNMARKTOS` / `ENABLE_NFTABLES` | `OFF` | Optional Linux firewall integrations |
 
-On macOS, if libraries are installed via Homebrew, specify paths:
-
-```bash
-cmake .. -DCMAKE_PREFIX_PATH="/usr/local/opt/mbedtls;/usr/local/opt/libsodium"
-```
+CMake consumers can use `find_package(shadowsocks-libev CONFIG REQUIRED)` and
+link `shadowsocks::static`, `shadowsocks::shared`, or `shadowsocks::shadowsocks`
+(which prefers the shared library when installed). A pkg-config file is also
+installed. Dependency provenance and update instructions are in
+[third_party/README.md](third_party/README.md); modernization progress and
+validation limits are tracked in [docs/modernization.md](docs/modernization.md).
 
 ### Debian & Ubuntu
 
@@ -193,47 +198,20 @@ nix-env -iA nixpkgs.shadowsocks-libev
 
 ### Linux
 
-In general, you need the following build dependencies:
-
-* cmake (>= 3.2)
-* a C compiler (gcc or clang)
-* pkg-config
-* libmbedtls
-* libsodium (>= 1.0.4)
-* libpcre2
-* libev
-* libc-ares
-* asciidoc (for documentation only)
-* xmlto (for documentation only)
-
-If your system is too old to provide libmbedtls and libsodium (>= 1.0.4), you will need to either install those libraries manually or upgrade your system.
-
-Install build dependencies for your distribution:
+The default bundled build needs only a C11 compiler, CMake 3.20+ and Make
+or Ninja. For example, on Debian/Ubuntu:
 
 ```bash
-# Debian / Ubuntu
-sudo apt-get install --no-install-recommends build-essential cmake pkg-config \
-    libpcre2-dev libev-dev libc-ares-dev libmbedtls-dev libsodium-dev \
-    asciidoc xmlto
-
-# CentOS / Fedora / RHEL
-sudo yum install gcc cmake make pkg-config pcre2-devel c-ares-devel \
-    libev-devel libsodium-devel mbedtls-devel asciidoc xmlto
-
-# Arch
-sudo pacman -S gcc cmake make pkg-config pcre2 c-ares libev libsodium mbedtls \
-    asciidoc xmlto
+sudo apt-get install --no-install-recommends build-essential cmake
+cmake -S . -B build
+cmake --build build --parallel
+ctest --test-dir build -L 'unit|vendor' --output-on-failure
+sudo cmake --install build
 ```
 
-Then build and install:
-
-```bash
-git submodule update --init --recursive
-mkdir -p build && cd build
-cmake ..
-make
-sudo make install
-```
+Distribution packagers can install `libpcre2-dev libev-dev libc-ares-dev
+libmbedtls-dev libsodium-dev` and select `-DSS_DEPENDENCY_MODE=system
+-DWITH_STATIC=OFF`. Documentation additionally needs asciidoc and xmlto.
 
 ### FreeBSD
 #### Install
@@ -284,40 +262,35 @@ Note that is simply a workaround, each time you upgrade the port your changes wi
 The OpenWRT project is maintained here:
 [openwrt-shadowsocks](https://github.com/shadowsocks/openwrt-shadowsocks).
 
-### OS X
-For OS X, use [Homebrew](http://brew.sh) to install or build.
+### macOS
 
-Install Homebrew:
-
-```bash
-ruby -e "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/install)"
-```
-Install shadowsocks-libev:
-
-```bash
-brew install shadowsocks-libev
-```
+Use the bundled CMake instructions above with Xcode Command Line Tools and
+CMake. The bundled executables require no Homebrew runtime libraries.
+For system mode, use Mbed TLS 3 and point `CMAKE_PREFIX_PATH` at its prefix.
 
 ### Windows (MinGW)
-To build Windows native binaries, the recommended method is to use Docker:
 
-* On Windows: double-click `make.bat` in `docker\mingw`
-* On Unix-like system:
+In an MSYS2 UCRT64 shell, install the toolchain and build native Windows programs:
 
-        cd shadowsocks-libev/docker/mingw
-        make
+```bash
+pacman -S --needed mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja
+cmake -S . -B build -G Ninja
+cmake --build build --parallel
+ctest --test-dir build -L 'unit|vendor' --output-on-failure
+```
 
-A tarball with 32-bit and 64-bit binaries will be generated in the same directory.
+Unix hosts with Zig installed can cross-compile without a separate MinGW SDK:
 
-You could also manually use MinGW-w64 compilers to build in Unix-like shell (MSYS2/Cygwin), or cross-compile on Unix-like systems (Linux/MacOS). Please refer to build scripts in `docker/mingw`.
+```bash
+cmake -S . -B build-windows -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/zig-windows.cmake
+cmake --build build-windows --parallel
+```
 
-Currently you need to use a patched libev library for MinGW:
-
-* https://github.com/shadowsocks/libev/archive/mingw.zip
-
-Notice that TCP Fast Open (TFO) is only available on **Windows 10**, **1607** or later version (precisely, build >= 14393). If you are using **1709** (build 16299) or later version, you also need to run the following command in PowerShell/Command Prompt **as Administrator** and **reboot** to use TFO properly:
-
-        netsh int tcp set global fastopenfallback=disabled
+Cross-compilation does not run Windows tests. The portability workflow runs
+native UCRT64 tests and TCP/UDP relay checks on Windows. Bundled mode is required
+because libev must use the project's Winsock handle adapter. MSVC remains a
+separate, unsupported milestone; configuration reports this explicitly.
+The historical Autotools scripts in `docker/mingw` are superseded by this build.
 
 ### Docker
 
@@ -521,7 +494,7 @@ Select "Install a SIP003 plugin" from the main menu (requires root). Supports au
 
 ### ss-nat
 
-`ss-nat` is a helper script that sets up iptables NAT rules for `ss-redir` to provide transparent TCP/UDP redirection. It is installed on Linux systems by `make install`.
+`ss-nat` is a helper script that sets up iptables NAT rules for `ss-redir` to provide transparent TCP/UDP redirection. Enable `-DSS_INSTALL_TOOLS=ON` to install it on Linux.
 
 **Prerequisites:** Linux with `iptables`, `ipset`, and optionally TPROXY kernel module for UDP
 

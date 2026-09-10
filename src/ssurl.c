@@ -228,10 +228,12 @@ ss_url_free(ss_url_t *url)
 int
 ss_url_parse(const char *uri, ss_url_t *url)
 {
-    if (uri == NULL || url == NULL)
+    if (url == NULL)
         return -1;
 
     memset(url, 0, sizeof(*url));
+    if (uri == NULL)
+        return -1;
 
     if (strncasecmp(uri, SS_URL_SCHEME, strlen(SS_URL_SCHEME)) != 0)
         return -1;

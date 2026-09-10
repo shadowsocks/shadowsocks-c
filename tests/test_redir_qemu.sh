@@ -11,7 +11,7 @@
 #
 # Usage: bash tests/test_redir_qemu.sh [BIN_DIR]
 #   BIN_DIR: directory containing ss-server and ss-redir binaries
-#            (default: build/shared/bin/)
+#            (default: build/bin/)
 #
 # Requirements (Linux only):
 #   - qemu-system-x86_64
@@ -22,7 +22,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BIN_DIR="${1:-$PROJECT_DIR/build/shared/bin}"
+BIN_DIR="${1:-$PROJECT_DIR/build/bin}"
 
 # Resolve to absolute path
 BIN_DIR="$(cd "$BIN_DIR" && pwd)"

@@ -42,3 +42,6 @@ else()
     set(CARES_FOUND FALSE)
     message(FATAL_ERROR "Could not find c-ares library. Install libc-ares-dev or equivalent.")
 endif()
+
+# CMake find_dependency uses the exact package-name spelling.
+set(Cares_FOUND ${CARES_FOUND})

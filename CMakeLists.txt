@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.20)
 
 set(PROJECT_NAME shadowsocks-libev)
 set(RELEASE_DATE 2026-02-09)
@@ -6,9 +6,13 @@ set(PROJECT_VERSION "3.3.6")
 set(PROJECT_DESC "a lightweight secured socks5 proxy")
 set(PROJECT_URL "https://shadowsocks.org")
 set(PROJECT_ISSUES_URL "https://github.com/shadowsocks/shadowsocks-libev")
-project(${PROJECT_NAME} VERSION ${PROJECT_VERSION})
+project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES C)
+if(MSVC)
+    message(FATAL_ERROR "MSVC is not supported yet. Use MinGW-w64 (UCRT64) or the Zig Windows toolchain; see docs/modernization.md.")
+endif()
 
 include(GNUInstallDirs)
+include(CTest)
 
 # Compilation database for clang-tidy and other tooling
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -19,63 +23,48 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
 
-# Note: -Werror is applied per-target in src/CMakeLists.txt to avoid
-# breaking bundled submodules (libcork, libipset, libbloom)
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -D_GNU_SOURCE")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -O2 -Wall -Wno-deprecated-declarations -fno-strict-aliasing")
-
 option(ENABLE_SANITIZERS "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
-if (ENABLE_SANITIZERS)
-    set(SANITIZER_FLAGS "-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SANITIZER_FLAGS}")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${SANITIZER_FLAGS}")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} ${SANITIZER_FLAGS}")
-    message(STATUS "Sanitizers enabled (ASan + UBSan)")
-endif ()
-
-option(ENABLE_COVERAGE "Build with coverage instrumentation (gcov)" OFF)
-if (ENABLE_COVERAGE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 --coverage")
-    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} --coverage")
-    message(STATUS "Coverage instrumentation enabled")
-endif ()
+option(ENABLE_COVERAGE "Build with coverage instrumentation" OFF)
+option(SS_WARNINGS_AS_ERRORS "Treat project warnings as errors" ON)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
-set(RUNTIME_SHARED_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/shared/bin)
 
 set(CMAKE_MACOSX_RPATH TRUE)
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-if (NOT CMAKE_BUILD_TYPE)
-    set(CMAKE_BUILD_TYPE Debug)
+if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build configuration" FORCE)
 endif ()
 # Detect linux
-if (UNIX AND NOT APPLE)
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set(LINUX TRUE)
 endif ()
 
 message(STATUS "Running cmake version ${CMAKE_VERSION}")
 
-option(WITH_STATIC "build with static libraries." ON)
-option(WITH_EMBEDDED_SRC "build with embedded libcork, libipset, and libbloom source." ON)
+option(WITH_STATIC "Link executable dependencies statically" ON)
+option(SS_BUILD_EXECUTABLES "Build command-line programs" ON)
+option(SS_BUILD_STATIC_LIBRARY "Build the static embedding library" ON)
+option(SS_BUILD_SHARED_LIBRARY "Build the shared embedding library" ON)
+option(SS_INSTALL_TOOLS "Install platform shell tools" OFF)
 option(ENABLE_CONNMARKTOS "Enable saved connmark to IP TOS QoS feature" OFF)
 option(ENABLE_NFTABLES "Report malicious IP to nftables" OFF)
 
-# When choose to not use embedded libcork, libipset and libbloom, use libs shipped by system
-if (NOT WITH_EMBEDDED_SRC)
-    set(USE_SYSTEM_SHARED_LIB TRUE)
-endif ()
-
-# Find dependencies via Find modules
-find_package(PCRE2 REQUIRED)
-find_package(MbedTLS REQUIRED)
-find_package(Sodium REQUIRED)
-find_package(Cares REQUIRED)
+option(SS_MINIMAL "Disable regex, plugins, manager and legacy stream ciphers" OFF)
+option(SS_ENABLE_REGEX "Enable PCRE2 ACL patterns" ON)
+option(SS_ENABLE_PLUGINS "Enable SIP003 and obfsproxy subprocesses" ON)
+option(SS_ENABLE_LEGACY "Enable legacy stream ciphers" ON)
+if(SS_MINIMAL)
+    set(SS_ENABLE_REGEX OFF)
+    set(SS_ENABLE_PLUGINS OFF)
+    set(SS_ENABLE_LEGACY OFF)
+    set(WITH_SS_MANAGER OFF CACHE BOOL "Build ss-manager" FORCE)
+endif()
+include(cmake/Dependencies.cmake)
 
 # Connmarktos support
 if(ENABLE_CONNMARKTOS)
@@ -108,100 +97,20 @@ endif()
 # Run platform tests
 include(${PROJECT_SOURCE_DIR}/cmake/configure.cmake)
 configure_file(${PROJECT_SOURCE_DIR}/cmake/config.h.cmake ${PROJECT_BINARY_DIR}/src/config.h)
-add_definitions(-I${PROJECT_BINARY_DIR}/src)
-add_definitions(-DHAVE_CONFIG_H)
-
-# pkg-config
-configure_file(
-        ${PROJECT_SOURCE_DIR}/cmake/shadowsocks-libev.pc.cmake
-        ${PROJECT_BINARY_DIR}/pkgconfig/shadowsocks-libev.pc
-        @ONLY
-)
-install(FILES
-        ${PROJECT_BINARY_DIR}/pkgconfig/shadowsocks-libev.pc
-        DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig
-        )
-
-if (WITH_EMBEDDED_SRC)
-# We need libcork,libipset headers
-include_directories(libcork/include)
-include_directories(libipset/include)
-include_directories(libbloom/murmur2)
-include_directories(libbloom)
-
-set(LIBCORK_SOURCE
-        libcork/src/libcork/cli/commands.c
-        libcork/src/libcork/core/allocator.c
-        libcork/src/libcork/core/error.c
-        libcork/src/libcork/core/gc.c
-        libcork/src/libcork/core/hash.c
-        libcork/src/libcork/core/ip-address.c
-        libcork/src/libcork/core/mempool.c
-        libcork/src/libcork/core/timestamp.c
-        libcork/src/libcork/core/u128.c
-        libcork/src/libcork/core/version.c
-        libcork/src/libcork/ds/array.c
-        libcork/src/libcork/ds/bitset.c
-        libcork/src/libcork/ds/buffer.c
-        libcork/src/libcork/ds/dllist.c
-        libcork/src/libcork/ds/file-stream.c
-        libcork/src/libcork/ds/hash-table.c
-        libcork/src/libcork/ds/managed-buffer.c
-        libcork/src/libcork/ds/ring-buffer.c
-        libcork/src/libcork/ds/slice.c
-        libcork/src/libcork/posix/directory-walker.c
-        libcork/src/libcork/posix/env.c
-        libcork/src/libcork/posix/exec.c
-        libcork/src/libcork/posix/files.c
-        libcork/src/libcork/posix/process.c
-        libcork/src/libcork/pthreads/thread.c
-        )
-if (NOT MINGW)
-set(LIBCORK_SOURCE ${LIBCORK_SOURCE} libcork/src/libcork/posix/subprocess.c)
-else ()
-set(LIBCORK_SOURCE ${LIBCORK_SOURCE} libcork/src/libcork/posix/mingw.c)
-endif ()
-
-add_library(cork STATIC ${LIBCORK_SOURCE})
-target_compile_definitions(cork PUBLIC -DCORK_API=CORK_LOCAL)
-if (MINGW)
-target_link_libraries(cork ws2_32)
-endif ()
-
-set(LIBIPSET_SOURCE
-        libipset/src/libipset/general.c
-        libipset/src/libipset/bdd/assignments.c
-        libipset/src/libipset/bdd/basics.c
-        libipset/src/libipset/bdd/bdd-iterator.c
-        libipset/src/libipset/bdd/expanded.c
-        libipset/src/libipset/bdd/reachable.c
-        libipset/src/libipset/bdd/read.c
-        libipset/src/libipset/bdd/write.c
-        libipset/src/libipset/map/allocation.c
-        libipset/src/libipset/map/inspection.c
-        libipset/src/libipset/map/ipv4_map.c
-        libipset/src/libipset/map/ipv6_map.c
-        libipset/src/libipset/map/storage.c
-        libipset/src/libipset/set/allocation.c
-        libipset/src/libipset/set/inspection.c
-        libipset/src/libipset/set/ipv4_set.c
-        libipset/src/libipset/set/ipv6_set.c
-        libipset/src/libipset/set/iterator.c
-        libipset/src/libipset/set/storage.c
-        )
-
-add_library(ipset STATIC ${LIBIPSET_SOURCE})
+include(cmake/ProjectOptions.cmake)
+include_directories(${PROJECT_BINARY_DIR}/src)
+add_compile_definitions(HAVE_CONFIG_H)
 
 set(LIBBLOOM_SOURCE
-        libbloom/bloom.c
-        libbloom/murmur2/MurmurHash2.c
+        third_party/bloom/bloom.c
+        third_party/bloom/murmur2/MurmurHash2.c
         )
 
 add_library(bloom STATIC ${LIBBLOOM_SOURCE})
-target_link_libraries(ipset cork bloom)
-endif ()
+target_include_directories(bloom PUBLIC third_party/bloom third_party/bloom/murmur2)
 
 add_subdirectory(src)
+include(cmake/InstallPackage.cmake)
 add_subdirectory(doc)
 
 # Testing
@@ -234,9 +143,11 @@ if (ENABLE_COVERAGE)
 endif ()
 
 # Install ss-nat on Linux
-if(LINUX)
+if(LINUX AND SS_INSTALL_TOOLS)
     install(PROGRAMS src/ss-nat DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 # Install ss-setup TUI tool
-install(PROGRAMS scripts/ss-setup.sh DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME ss-setup)
+if(UNIX AND SS_INSTALL_TOOLS)
+    install(PROGRAMS scripts/ss-setup.sh DESTINATION ${CMAKE_INSTALL_BINDIR} RENAME ss-setup)
+endif()

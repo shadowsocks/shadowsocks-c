@@ -6,8 +6,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include "test_helpers.h"
+#ifndef _WIN32
 #include <sys/wait.h>
+#else
+#include <process.h>
+#endif
 
 int verbose = 0;
 
@@ -103,11 +107,8 @@ test_parse_addr_invalid_ipv6_like_host_is_not_rewritten(void)
 static void
 test_read_jconf_preserves_64bit_integer_strings(void)
 {
-    char path[] = "/tmp/ss_jconf_test.XXXXXX";
-    int fd      = mkstemp(path);
-    assert(fd >= 0);
-
-    FILE *f = fdopen(fd, "w");
+    char path[4096];
+    FILE *f = test_tempfile(path, sizeof(path));
     assert(f != NULL);
     fprintf(f, "{\n");
     fprintf(f, "\"server\":\"127.0.0.1\",\n");
@@ -122,7 +123,7 @@ test_read_jconf_preserves_64bit_integer_strings(void)
     assert(conf->remote_port != NULL);
     assert(strcmp(conf->remote_port, "4294967296") == 0);
 
-    unlink(path);
+    remove(path);
 }
 
 static void
@@ -139,19 +140,21 @@ write_minimal_config(FILE *f, const char *extra_line)
     fprintf(f, "\n}\n");
 }
 
-#ifndef __MINGW32__
+static const char *test_executable;
 static void
 test_read_jconf_rejects_out_of_range_int_options(void)
 {
-    char path[] = "/tmp/ss_jconf_test.XXXXXX";
-    int fd      = mkstemp(path);
-    assert(fd >= 0);
-
-    FILE *f = fdopen(fd, "w");
+    char path[4096];
+    FILE *f = test_tempfile(path, sizeof(path));
     assert(f != NULL);
     write_minimal_config(f, "\"tcp_incoming_sndbuf\":2147483648");
     fclose(f);
 
+#ifdef _WIN32
+    const char *args[] = {test_executable, "--read-config", path, NULL};
+    intptr_t status = _spawnv(_P_WAIT, test_executable, args);
+    assert(status > 0);
+#else
     pid_t pid = fork();
     assert(pid >= 0);
     if (pid == 0) {
@@ -163,14 +166,20 @@ test_read_jconf_rejects_out_of_range_int_options(void)
     assert(waitpid(pid, &status, 0) == pid);
     assert(WIFEXITED(status));
     assert(WEXITSTATUS(status) != 0);
-
-    unlink(path);
-}
 #endif
 
+    remove(path);
+}
+
 int
-main(void)
+main(int argc, char **argv)
 {
+    test_executable = argv[0];
+    test_network_init();
+    if (argc == 3 && strcmp(argv[1], "--read-config") == 0) {
+        read_jconf(argv[2]);
+        return 0;
+    }
     test_parse_addr_ipv4_with_port();
     test_parse_addr_ipv6_with_port();
     test_parse_addr_hostname_with_port();
@@ -179,8 +188,6 @@ main(void)
     test_parse_addr_malformed_bracketed_ipv6_is_not_rewritten();
     test_parse_addr_invalid_ipv6_like_host_is_not_rewritten();
     test_read_jconf_preserves_64bit_integer_strings();
-#ifndef __MINGW32__
     test_read_jconf_rejects_out_of_range_int_options();
-#endif
     return 0;
 }

@@ -51,7 +51,7 @@
 #include <sys/socket.h>
 #include <pwd.h>
 #include <sys/wait.h>
-#include <libcork/core.h>
+#include "core.h"
 
 #if defined(HAVE_SYS_IOCTL_H) && defined(HAVE_NET_IF_H) && defined(__linux__)
 #include <net/if.h>
@@ -73,9 +73,9 @@
 int verbose          = 0;
 char *executable     = "ss-server";
 char *working_dir    = NULL;
-int working_dir_size = 0;
+size_t working_dir_size = 0;
 
-static struct cork_hash_table *server_table;
+static struct server *server_table;
 
 static int
 copy_port(char *dst, size_t dst_len, const char *src, size_t src_len)
@@ -760,30 +760,30 @@ create_and_bind(const char *host, const char *port, int protocol)
     }
 
     for (/*rp = result*/; rp != NULL; rp = rp->ai_next) {
-        listen_sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        listen_sock = ss_socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (listen_sock == -1) {
             continue;
         }
 
         if (rp->ai_family == AF_INET6) {
             int ipv6only = host ? 1 : 0;
-            setsockopt(listen_sock, IPPROTO_IPV6, IPV6_V6ONLY, &ipv6only, sizeof(ipv6only));
+            ss_setsockopt(listen_sock, IPPROTO_IPV6, IPV6_V6ONLY, &ipv6only, sizeof(ipv6only));
         }
 
         int opt = 1;
-        setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+        ss_setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 #ifdef SO_NOSIGPIPE
-        setsockopt(listen_sock, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
+        ss_setsockopt(listen_sock, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
 #endif
 
         s = bind(listen_sock, rp->ai_addr, rp->ai_addrlen);
         if (s == 0) {
             /* We managed to bind successfully! */
-            close(listen_sock);
+            ss_socket_close(listen_sock);
             break;
         } else {
             ERROR("bind");
-            close(listen_sock);
+            ss_socket_close(listen_sock);
         }
     }
 
@@ -845,8 +845,13 @@ add_server(struct manager_ctx *manager, struct server *server)
         return -1;
     }
 
-    bool new = false;
-    cork_hash_table_put(server_table, (void *)server->port, (void *)server, &new, NULL, NULL);
+    struct server *replaced;
+    // NOLINTNEXTLINE(clang-analyzer-core.DivideZero,clang-analyzer-security.ArrayBound): uthash initializes nonzero buckets and hashes the NUL-terminated port within its key length
+    HASH_REPLACE_STR(server_table, port, server, replaced);
+    if (replaced != NULL) {
+        destroy_server(replaced);
+        ss_free(replaced);
+    }
 
     return 0;
 }
@@ -860,7 +865,13 @@ kill_pid_from_file(FILE *f)
     if (fgets(buf, sizeof(buf), f) == NULL) {
         return;
     }
-    buf[strcspn(buf, "\r\n")] = '\0';
+    for (size_t i = 0; i < sizeof(buf); i++) {
+        if (buf[i] == '\0') break;
+        if (buf[i] == '\r' || buf[i] == '\n') {
+            buf[i] = '\0';
+            break;
+        }
+    }
     // Reject malformed pid file content instead of signaling a garbage pid
     if (ss_parse_int(buf, 1, INT_MAX, &pid) == 0) {
         kill(pid, SIGTERM);
@@ -911,12 +922,13 @@ stop_server(char *prefix, char *port)
 static void
 remove_server(char *prefix, char *port)
 {
-    char *old_port            = NULL;
     struct server *old_server = NULL;
 
-    cork_hash_table_delete(server_table, (void *)port, (void **)&old_port, (void **)&old_server);
+    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): uthash hashes only strlen(port) bytes; manager ports are validated and NUL-terminated
+    HASH_FIND_STR(server_table, port, old_server);
 
     if (old_server != NULL) {
+        HASH_DEL(server_table, old_server);
         destroy_server(old_server);
         ss_free(old_server);
     }
@@ -930,7 +942,9 @@ update_stat(char *port, uint64_t traffic)
     if (verbose) {
         LOGI("update traffic %" PRIu64 " for port %s", traffic, port);
     }
-    void *ret = cork_hash_table_get(server_table, (void *)port);
+    struct server *ret;
+    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): uthash hashes only strlen(port) bytes; manager ports are validated and NUL-terminated
+    HASH_FIND_STR(server_table, port, ret);
     if (ret != NULL) {
         struct server *server = (struct server *)ret;
         server->traffic = traffic;
@@ -1000,15 +1014,12 @@ manager_recv_cb(EV_P_ ev_io *w, int revents)
             ERROR("add_sendto");
         }
     } else if (strcmp(action, "list") == 0) {
-        struct cork_hash_table_iterator iter;
-        struct cork_hash_table_entry  *entry;
+        struct server *server, *next;
         char buf[BUF_SIZE];
         memset(buf, 0, BUF_SIZE);
         strcpy(buf, "[");
 
-        cork_hash_table_iterator_init(server_table, &iter);
-        while ((entry = cork_hash_table_iterator_next(&iter)) != NULL) {
-            struct server *server = (struct server *)entry->value;
+        HASH_ITER(hh, server_table, server, next) {
             char *method          = server->method ? server->method : manager->method;
             char entry_buf[BUF_SIZE];
             size_t entry_pos      = 0;
@@ -1068,8 +1079,7 @@ manager_recv_cb(EV_P_ ev_io *w, int revents)
         update_stat(port, traffic);
 
     } else if (strcmp(action, "ping") == 0) {
-        struct cork_hash_table_entry *entry;
-        struct cork_hash_table_iterator server_iter;
+        struct server *server, *next;
 
         char buf[BUF_SIZE];
         size_t pos = 0;
@@ -1079,10 +1089,7 @@ manager_recv_cb(EV_P_ ev_io *w, int revents)
             goto ERROR_MSG;
         }
 
-        cork_hash_table_iterator_init(server_table, &server_iter);
-
-        while ((entry = cork_hash_table_iterator_next(&server_iter)) != NULL) {
-            struct server *server = (struct server *)entry->value;
+        HASH_ITER(hh, server_table, server, next) {
             char entry_buf[64];
             int entry_len = snprintf(entry_buf, sizeof(entry_buf),
                                      "\"%s\":%" PRIu64 ",",
@@ -1191,18 +1198,18 @@ create_server_socket(const char *host, const char *port)
     }
 
     for (/*rp = result*/; rp != NULL; rp = rp->ai_next) {
-        server_sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        server_sock = ss_socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (server_sock == -1) {
             continue;
         }
 
         if (rp->ai_family == AF_INET6) {
             int ipv6only = host ? 1 : 0;
-            setsockopt(server_sock, IPPROTO_IPV6, IPV6_V6ONLY, &ipv6only, sizeof(ipv6only));
+            ss_setsockopt(server_sock, IPPROTO_IPV6, IPV6_V6ONLY, &ipv6only, sizeof(ipv6only));
         }
 
         int opt = 1;
-        setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+        ss_setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
 
         s = bind(server_sock, rp->ai_addr, rp->ai_addrlen);
         if (s == 0) {
@@ -1212,7 +1219,7 @@ create_server_socket(const char *host, const char *port)
             ERROR("bind");
         }
 
-        close(server_sock);
+        ss_socket_close(server_sock);
     }
 
     if (result != NULL) {
@@ -1505,7 +1512,7 @@ main(int argc, char **argv)
     struct passwd *pw = getpwuid(getuid());
 
     if (workdir == NULL || strlen(workdir) == 0) {
-        workdir = pw->pw_dir;
+        workdir = pw != NULL ? pw->pw_dir : NULL;
         // If home dir is still not defined or set to nologin/nonexistent, fall back to /tmp
         if (workdir == NULL || strlen(workdir) == 0 || strstr(workdir, "nologin") || 
             strstr(workdir, "nonexistent") || strcmp(workdir, "/") == 0) {
@@ -1519,6 +1526,9 @@ main(int argc, char **argv)
         working_dir_size = strlen(workdir) + 2;
         working_dir      = ss_malloc(working_dir_size);
         snprintf(working_dir, working_dir_size, "%s", workdir);
+    }
+    if (working_dir == NULL) {
+        FATAL("unable to allocate working directory");
     }
     LOGI("working directory points to %s", working_dir);
 
@@ -1597,7 +1607,7 @@ main(int argc, char **argv)
         FATAL("Couldn't open the directory");
     }
 
-    server_table = cork_string_hash_table_new(MAX_PORT_NUM, 0);
+    server_table = NULL;
 
     if (conf != NULL) {
         for (i = 0; i < conf->port_password_num; i++) {
@@ -1631,7 +1641,7 @@ main(int argc, char **argv)
             FATAL("manager unix socket path is too long");
         }
 
-        sfd = socket(AF_UNIX, SOCK_DGRAM, 0);       /*  Create server socket */
+        sfd = ss_socket(AF_UNIX, SOCK_DGRAM, 0);       /*  Create server socket */
         if (sfd == -1) {
             ss_free(working_dir);
             FATAL("socket");
@@ -1674,14 +1684,12 @@ main(int argc, char **argv)
     }
 
     // Clean up
-    struct cork_hash_table_entry *entry;
-    struct cork_hash_table_iterator server_iter;
-
-    cork_hash_table_iterator_init(server_table, &server_iter);
-
-    while ((entry = cork_hash_table_iterator_next(&server_iter)) != NULL) {
-        struct server *server = (struct server *)entry->value;
+    struct server *server, *next;
+    HASH_ITER(hh, server_table, server, next) {
         stop_server(working_dir, server->port);
+        HASH_DEL(server_table, server);
+        destroy_server(server);
+        ss_free(server);
     }
 
     ev_signal_stop(EV_DEFAULT, &sigint_watcher);

@@ -16,7 +16,7 @@ include(CheckCCompilerFlag)
 
 # Set CONNECT_IN_PROGRESS based on platform
 if(MINGW)
-    set(CONNECT_IN_PROGRESS "WSAEWOULDBLOCK")
+    set(CONNECT_IN_PROGRESS "EWOULDBLOCK")
 else()
     set(CONNECT_IN_PROGRESS "EINPROGRESS")
 endif()
@@ -180,18 +180,3 @@ endif ()
 if (NOT HAVE_WORKING_VFORK)
     set(vfork fork)
 endif ()
-
-# Stack protector detection
-option(DISABLE_SSP "Disable -fstack-protector" OFF)
-if(NOT DISABLE_SSP)
-    check_c_compiler_flag(-fstack-protector HAS_STACK_PROTECTOR)
-    if(HAS_STACK_PROTECTOR)
-        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector")
-        message(STATUS "Stack protector enabled")
-    endif()
-endif()
-
-# MinGW/Cygwin compiler flags
-if(MINGW OR CYGWIN)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mno-ms-bitfields")
-endif()

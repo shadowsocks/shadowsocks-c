@@ -33,6 +33,7 @@
 #include <stdlib.h>
 
 #include "cache.h"
+#include "platform.h"
 #include "utils.h"
 
 /** Creates a new cache object
@@ -118,7 +119,7 @@ cache_delete(struct cache *cache, int keep_data)
  *  @return EINVAL if cache is NULL, 0 otherwise
  */
 int
-cache_clear(struct cache *cache, ev_tstamp age)
+cache_clear(struct cache *cache, double age)
 {
     struct cache_entry *entry, *tmp;
 
@@ -126,7 +127,7 @@ cache_clear(struct cache *cache, ev_tstamp age)
         return EINVAL;
     }
 
-    ev_tstamp now = ev_time();
+    double now = ss_monotonic_time();
 
     HASH_ITER(hh, cache->entries, entry, tmp){
         if (now - entry->ts > age) {
@@ -220,7 +221,7 @@ cache_lookup(struct cache *cache, char *key, size_t key_len, void *result)
     HASH_FIND(hh, cache->entries, key, key_len, tmp);
     if (tmp) {
         HASH_DELETE(hh, cache->entries, tmp);
-        tmp->ts = ev_time();
+        tmp->ts = ss_monotonic_time();
         // NOLINTNEXTLINE(clang-analyzer-core.DivideZero): uthash bucket count is never zero
         HASH_ADD_KEYPTR(hh, cache->entries, tmp->key, key_len, tmp);
         *dirty_hack = tmp->data;
@@ -243,7 +244,7 @@ cache_key_exist(struct cache *cache, char *key, size_t key_len)
     HASH_FIND(hh, cache->entries, key, key_len, tmp);
     if (tmp) {
         HASH_DELETE(hh, cache->entries, tmp);
-        tmp->ts = ev_time();
+        tmp->ts = ss_monotonic_time();
         // NOLINTNEXTLINE(clang-analyzer-core.DivideZero): uthash bucket count is never zero
         HASH_ADD_KEYPTR(hh, cache->entries, tmp->key, key_len, tmp);
         return 1;
@@ -287,7 +288,7 @@ cache_insert(struct cache *cache, char *key, size_t key_len, void *data)
     entry->key[key_len] = 0;
 
     entry->data = data;
-    entry->ts   = ev_time();
+    entry->ts   = ss_monotonic_time();
     // NOLINTNEXTLINE(clang-analyzer-core.DivideZero): uthash bucket count is never zero
     HASH_ADD_KEYPTR(hh, cache->entries, entry->key, key_len, entry);
 

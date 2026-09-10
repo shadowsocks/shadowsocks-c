@@ -49,7 +49,7 @@ typedef mbedtls_md_info_t digest_type_t;
 #define MAX_NONCE_LENGTH 32
 #define MAX_MD_SIZE MBEDTLS_MD_MAX_SIZE
 /* we must have MBEDTLS_CIPHER_MODE_CFB defined */
-#if !defined(MBEDTLS_CIPHER_MODE_CFB)
+#if SS_ENABLE_LEGACY && !defined(MBEDTLS_CIPHER_MODE_CFB)
 #error Cipher Feedback mode a.k.a CFB not supported by your mbed TLS.
 #endif
 #ifndef MBEDTLS_GCM_C

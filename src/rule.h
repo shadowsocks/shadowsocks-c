@@ -31,24 +31,31 @@
 #include "config.h"
 #endif
 
-#include <libcork/ds.h>
+#include "core.h"
 
+#if SS_ENABLE_REGEX
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
+#endif
 
 typedef struct rule {
-    struct cork_dllist_item entries;
+    struct ss_list_item entries;
 
     char *pattern;
 
+    /* 0: regex, 1: full domain, 2: domain suffix (including the apex). */
+    unsigned kind;
+    const char *literal;
+#if SS_ENABLE_REGEX
     /* Runtime fields */
     pcre2_code *pattern_re;
     pcre2_match_data *match_data;
+#endif
 } rule_t;
 
-void add_rule(struct cork_dllist *, rule_t *);
+void add_rule(struct ss_list *, rule_t *);
 int init_rule(rule_t *);
-rule_t *lookup_rule(const struct cork_dllist *, const char *, size_t);
+rule_t *lookup_rule(const struct ss_list *, const char *, size_t);
 void free_rule(rule_t *);
 void remove_rule(rule_t *);
 rule_t *new_rule();

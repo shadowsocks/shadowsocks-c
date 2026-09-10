@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <unistd.h>
+#include "test_helpers.h"
 
 #include "acl.h"
 
@@ -10,11 +10,8 @@ int verbose = 0;
 static void
 test_invalid_regex_is_not_installed(void)
 {
-    char path[] = "/tmp/ss_acl_test.XXXXXX";
-    int fd      = mkstemp(path);
-    assert(fd >= 0);
-
-    FILE *f = fdopen(fd, "w");
+    char path[4096];
+    FILE *f = test_tempfile(path, sizeof(path));
     assert(f != NULL);
     fprintf(f, "[black_list]\n");
     fprintf(f, "[invalid\n");
@@ -31,17 +28,14 @@ test_invalid_regex_is_not_installed(void)
     assert(outbound_block_match_host("outbound.example") == 1);
     free_acl();
 
-    unlink(path);
+    remove(path);
 }
 
 static void
 test_long_acl_line_is_discarded(void)
 {
-    char path[] = "/tmp/ss_acl_test.XXXXXX";
-    int fd      = mkstemp(path);
-    assert(fd >= 0);
-
-    FILE *f = fdopen(fd, "w");
+    char path[4096];
+    FILE *f = test_tempfile(path, sizeof(path));
     assert(f != NULL);
     fprintf(f, "[black_list]\n");
     for (int i = 0; i < 400; i++) {
@@ -55,17 +49,14 @@ test_long_acl_line_is_discarded(void)
     assert(acl_match_host("kept.example") == 1);
     free_acl();
 
-    unlink(path);
+    remove(path);
 }
 
 static void
 test_invalid_cidr_is_discarded(void)
 {
-    char path[] = "/tmp/ss_acl_test.XXXXXX";
-    int fd      = mkstemp(path);
-    assert(fd >= 0);
-
-    FILE *f = fdopen(fd, "w");
+    char path[4096];
+    FILE *f = test_tempfile(path, sizeof(path));
     assert(f != NULL);
     fprintf(f, "[black_list]\n");
     fprintf(f, "1.2.3.0/999\n");
@@ -83,7 +74,7 @@ test_invalid_cidr_is_discarded(void)
     assert(acl_match_host("path/with/slash.example") == 1);
     free_acl();
 
-    unlink(path);
+    remove(path);
 }
 
 int

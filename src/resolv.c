@@ -39,7 +39,7 @@
 #include <errno.h>
 #include <unistd.h>
 #else
-#include "winsock.h" // Should be before <ares.h>
+#include "ss_windows.h" // Should be before <ares.h>
 #endif
 #include <ares.h>
 
@@ -49,17 +49,11 @@
 #include <ev.h>
 #endif
 
-#include <libcork/core.h>
+#include "core.h"
 
 #include "resolv.h"
 #include "utils.h"
 #include "netutils.h"
-
-#ifdef __MINGW32__
-#define CONV_STATE_CB (ares_sock_state_cb)
-#else
-#define CONV_STATE_CB
-#endif
 
 /*
  * Implement DNS resolution interface using libc-ares
@@ -107,7 +101,7 @@ static int resolv_mode = MODE_IPV4_FIRST;
 
 static void resolv_sock_cb(struct ev_loop *, struct ev_io *, int);
 static void resolv_timer_cb(struct ev_loop *, struct ev_timer *, int);
-static void resolv_sock_state_cb(void *, int, int, int);
+static void resolv_sock_state_cb(void *, ares_socket_t, int, int);
 
 static void dns_query_v4_cb(void *, int, int, struct hostent *);
 static void dns_query_v6_cb(void *, int, int, struct hostent *);
@@ -156,7 +150,7 @@ resolv_init(struct ev_loop *loop, char *nameservers, int ipv6first)
     memset(&default_ctx, 0, sizeof(struct resolv_ctx));
 
     default_ctx.options.sock_state_cb_data = &default_ctx;
-    default_ctx.options.sock_state_cb      = CONV_STATE_CB resolv_sock_state_cb;
+    default_ctx.options.sock_state_cb      = resolv_sock_state_cb;
     default_ctx.options.timeout            = 3000;
     default_ctx.options.tries              = 2;
 
@@ -439,7 +433,7 @@ all_requests_are_null(struct resolv_query *query)
 static void
 resolv_timer_cb(struct ev_loop *loop, struct ev_timer *w, int revents)
 {
-    struct resolv_ctx *ctx = cork_container_of(w, struct resolv_ctx, timer);
+    struct resolv_ctx *ctx = ss_container_of(w, struct resolv_ctx, timer);
 
     ev_tstamp now   = ev_now(default_loop);
     ev_tstamp after = ctx->last_tick - now + SS_TIMER_AFTER;
@@ -460,7 +454,7 @@ resolv_timer_cb(struct ev_loop *loop, struct ev_timer *w, int revents)
  * Handle c-ares events
  */
 static void
-resolv_sock_state_cb(void *data, int s, int read, int write)
+resolv_sock_state_cb(void *data, ares_socket_t s, int read, int write)
 {
     struct resolv_ctx *ctx = (struct resolv_ctx *)data;
     int events             = (read ? EV_READ : 0) | (write ? EV_WRITE : 0);

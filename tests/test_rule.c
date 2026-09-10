@@ -70,8 +70,8 @@ test_init_rule_invalid(void)
 static void
 test_lookup_rule(void)
 {
-    struct cork_dllist rules;
-    cork_dllist_init(&rules);
+    struct ss_list rules;
+    ss_list_init(&rules);
 
     rule_t *rule1 = new_rule();
     accept_rule_arg(rule1, "^google\\.com$");

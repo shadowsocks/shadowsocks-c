@@ -20,8 +20,8 @@
  * <http://www.gnu.org/licenses/>.
  */
 
-#ifndef _WINSOCK_H
-#define _WINSOCK_H
+#ifndef SS_WINSOCK_COMPAT_H
+#define SS_WINSOCK_COMPAT_H
 
 #ifdef __MINGW32__
 
@@ -39,41 +39,10 @@
 #endif
 
 // Winsock headers
-#include <windows.h>
 #include <winsock2.h>
+#include <windows.h>
 #include <ws2tcpip.h>
 #include <mswsock.h>
-
-// Override POSIX error number
-#ifdef errno
-#undef errno
-#endif
-#define errno WSAGetLastError()
-
-#ifdef EWOULDBLOCK
-#undef EWOULDBLOCK
-#endif
-#define EWOULDBLOCK WSAEWOULDBLOCK
-
-#ifdef CONNECT_IN_PROGRESS
-#undef CONNECT_IN_PROGRESS
-#endif
-#define CONNECT_IN_PROGRESS WSAEWOULDBLOCK
-
-#ifdef EOPNOTSUPP
-#undef EOPNOTSUPP
-#endif
-#define EOPNOTSUPP WSAEOPNOTSUPP
-
-#ifdef EPROTONOSUPPORT
-#undef EPROTONOSUPPORT
-#endif
-#define EPROTONOSUPPORT WSAEPROTONOSUPPORT
-
-#ifdef ENOPROTOOPT
-#undef ENOPROTOOPT
-#endif
-#define ENOPROTOOPT WSAENOPROTOOPT
 
 // Check if ConnectEx supported in header
 #ifdef WSAID_CONNECTEX
@@ -84,13 +53,6 @@
 // Enable TFO support
 #define TCP_FASTOPEN_WINSOCK 1
 #endif
-
-// Override close function
-#define close(fd) closesocket(fd)
-
-// Override MinGW functions
-#define setsockopt(a, b, c, d, e) setsockopt(a, b, c, (const char *)(d), e)
-#define inet_ntop(a, b, c, d) inet_ntop(a, (void *)(b), c, d)
 
 // Override Windows built-in functions
 #ifdef ERROR
@@ -120,4 +82,4 @@ int winsock_dummybind(SOCKET fd, struct sockaddr *sa);
 
 #endif // __MINGW32__
 
-#endif // _WINSOCK_H
+#endif // SS_WINSOCK_COMPAT_H

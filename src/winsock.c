@@ -22,7 +22,7 @@
 
 #ifdef __MINGW32__
 
-#include "winsock.h"
+#include "ss_windows.h"
 #include "utils.h"
 
 #ifndef ENABLE_QUICK_EDIT

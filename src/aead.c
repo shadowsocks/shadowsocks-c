@@ -39,7 +39,7 @@
 #include "aead.h"
 #include "aead_internal.h"
 #include "utils.h"
-#include "winsock.h"
+#include "ss_windows.h"
 
 #define NONE                    (-1)
 

@@ -102,3 +102,15 @@ doc/*.html
 
 # CMake objection
 obj-*
+
+# Pinned source archives are part of offline release builds.
+!third_party/dist/*.tar.gz
+!third_party/dist/*.tar.bz2
+
+# Former dependency checkouts retained locally during migration.
+/libipset/
+/libbloom/
+/libcork/
+
+# Python integration-test bytecode.
+__pycache__/

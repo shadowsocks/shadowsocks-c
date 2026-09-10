@@ -5,9 +5,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include "test_helpers.h"
 
 int verbose = 0;
 
@@ -129,6 +127,7 @@ test_get_sockaddr_rejects_invalid_ip_literal_ports(void)
 int
 main(void)
 {
+    test_network_init();
     test_get_sockaddr_len();
     test_sockaddr_cmp();
     test_sockaddr_cmp_addr();

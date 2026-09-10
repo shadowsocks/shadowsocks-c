@@ -55,3 +55,6 @@ else()
     set(SODIUM_FOUND FALSE)
     message(FATAL_ERROR "Could not find libsodium. Install libsodium-dev or equivalent.")
 endif()
+
+# CMake find_dependency uses the exact package-name spelling.
+set(Sodium_FOUND ${SODIUM_FOUND})

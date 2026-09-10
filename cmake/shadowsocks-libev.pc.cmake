@@ -1,4 +1,4 @@
-prefix=@CMAKE_INSTALL_PREFIX@
+prefix=${pcfiledir}/@SS_PC_PREFIX_RELATIVE@
 exec_prefix=${prefix}
 libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
 includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
@@ -10,3 +10,4 @@ Version: @PROJECT_VERSION@
 Requires:
 Cflags: -I${includedir}
 Libs: -L${libdir} -lshadowsocks-libev
+Libs.private: @SS_PC_PRIVATE@

@@ -1,0 +1,24 @@
+{
+  "commit": "8fe386b5c270fc34d2bf53ef5ffb93d93242fac2",
+  "platform": "Darwin arm64",
+  "binaries": {
+    "ss-local": {
+      "bytes": 1326328,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+      ]
+    },
+    "ss-server": {
+      "bytes": 1500968,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+      ]
+    },
+    "ss-tunnel": {
+      "bytes": 828712,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)"
+      ]
+    }
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 20,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "system",
+      "displayName": "System dependencies",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-system",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "WITH_STATIC": "OFF",
+        "WITH_DOC_MAN": "OFF",
+        "WITH_DOC_HTML": "OFF",
+        "SS_DEPENDENCY_MODE": "system"
+      }
+    },
+    {
+      "name": "system-static",
+      "inherits": "system",
+      "binaryDir": "${sourceDir}/build-system-static",
+      "cacheVariables": {
+        "WITH_STATIC": "ON",
+        "SS_BUILD_SHARED_LIBRARY": "OFF"
+      }
+    },
+    {
+      "name": "asan",
+      "inherits": "system",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ENABLE_SANITIZERS": "ON"
+      }
+    },
+    {
+      "name": "bundled",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-bundled",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "SS_DEPENDENCY_MODE": "bundled",
+        "WITH_STATIC": "ON"
+      }
+    },
+    {
+      "name": "minimal",
+      "inherits": "bundled",
+      "binaryDir": "${sourceDir}/build-minimal",
+      "cacheVariables": {
+        "SS_MINIMAL": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "system",
+      "configurePreset": "system"
+    },
+    {
+      "name": "system-static",
+      "configurePreset": "system-static"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan"
+    },
+    {
+      "name": "bundled",
+      "configurePreset": "bundled"
+    },
+    {
+      "name": "minimal",
+      "configurePreset": "minimal"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "system",
+      "configurePreset": "system",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      }
+    },
+    {
+      "name": "system-static",
+      "configurePreset": "system-static",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "unit"
+        }
+      }
+    },
+    {
+      "name": "bundled",
+      "configurePreset": "bundled",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "unit|vendor"
+        }
+      }
+    },
+    {
+      "name": "minimal",
+      "configurePreset": "minimal",
+      "output": {
+        "outputOnFailure": true
+      },
+      "filter": {
+        "include": {
+          "label": "unit|vendor"
+        }
+      }
+    }
+  ]
+}

@@ -181,6 +181,7 @@ test_aead_repeat_salt_rejection_releases_context(void)
  * the first segment carries the nonce, so a codec that mishandles the
  * post-nonce steady state still round-trips a single segment correctly.
  */
+#if SS_ENABLE_LEGACY
 static void
 test_stream_multi_segment_roundtrip(const char *method)
 {
@@ -222,6 +223,8 @@ test_stream_multi_segment_roundtrip(const char *method)
     ss_free(crypto);
 }
 
+#endif
+
 int
 main(void)
 {
@@ -236,6 +239,7 @@ main(void)
     test_crypto_parse_key();
     test_aead_repeat_salt_rejection_releases_context();
 
+#if SS_ENABLE_LEGACY
     /* mbedTLS-backed ciphers and libsodium-backed ciphers use different
      * code paths in stream.c, so cover both. */
     test_stream_multi_segment_roundtrip("aes-256-cfb");
@@ -243,5 +247,8 @@ main(void)
     test_stream_multi_segment_roundtrip("camellia-128-cfb");
     test_stream_multi_segment_roundtrip("chacha20-ietf");
     test_stream_multi_segment_roundtrip("salsa20");
+#else
+    assert(crypto_init("password", NULL, "aes-256-cfb") == NULL);
+#endif
     return 0;
 }

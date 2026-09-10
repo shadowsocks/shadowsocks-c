@@ -1,0 +1,42 @@
+{
+  "commit": "8fe386b5c270fc34d2bf53ef5ffb93d93242fac2",
+  "platform": "Darwin arm64",
+  "binaries": {
+    "ss-local": {
+      "bytes": 295912,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+        "\t/opt/homebrew/opt/libev/lib/libev.4.dylib (compatibility version 5.0.0, current version 5.0.0)",
+        "\t/opt/homebrew/opt/c-ares/lib/libcares.2.dylib (compatibility version 2.0.0, current version 2.19.5)",
+        "\t/usr/lib/libpcre2-8.0.dylib (compatibility version 12.0.0, current version 12.2.0)",
+        "\t/opt/homebrew/opt/libsodium/lib/libsodium.26.dylib (compatibility version 31.0.0, current version 31.0.0)",
+        "\t/opt/homebrew/opt/mbedtls@3/lib/libmbedtls.21.dylib (compatibility version 21.0.0, current version 3.6.6)",
+        "\t/opt/homebrew/opt/mbedtls@3/lib/libmbedcrypto.16.dylib (compatibility version 16.0.0, current version 3.6.6)"
+      ]
+    },
+    "ss-server": {
+      "bytes": 314360,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+        "\t/opt/homebrew/opt/libev/lib/libev.4.dylib (compatibility version 5.0.0, current version 5.0.0)",
+        "\t/opt/homebrew/opt/c-ares/lib/libcares.2.dylib (compatibility version 2.0.0, current version 2.19.5)",
+        "\t/usr/lib/libpcre2-8.0.dylib (compatibility version 12.0.0, current version 12.2.0)",
+        "\t/opt/homebrew/opt/libsodium/lib/libsodium.26.dylib (compatibility version 31.0.0, current version 31.0.0)",
+        "\t/opt/homebrew/opt/mbedtls@3/lib/libmbedtls.21.dylib (compatibility version 21.0.0, current version 3.6.6)",
+        "\t/opt/homebrew/opt/mbedtls@3/lib/libmbedcrypto.16.dylib (compatibility version 16.0.0, current version 3.6.6)"
+      ]
+    },
+    "ss-tunnel": {
+      "bytes": 268680,
+      "dependencies": [
+        "\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1356.0.0)",
+        "\t/opt/homebrew/opt/libev/lib/libev.4.dylib (compatibility version 5.0.0, current version 5.0.0)",
+        "\t/opt/homebrew/opt/c-ares/lib/libcares.2.dylib (compatibility version 2.0.0, current version 2.19.5)",
+        "\t/usr/lib/libpcre2-8.0.dylib (compatibility version 12.0.0, current version 12.2.0)",
+        "\t/opt/homebrew/opt/libsodium/lib/libsodium.26.dylib (compatibility version 31.0.0, current version 31.0.0)",
+        "\t/opt/homebrew/opt/mbedtls@3/lib/libmbedtls.21.dylib (compatibility version 21.0.0, current version 3.6.6)",
+        "\t/opt/homebrew/opt/mbedtls@3/lib/libmbedcrypto.16.dylib (compatibility version 16.0.0, current version 3.6.6)"
+      ]
+    }
+  }
+}
