@@ -859,7 +859,7 @@ add_server(struct manager_ctx *manager, struct server *server)
 static void
 kill_pid_from_file(FILE *f)
 {
-    char buf[16];
+    char buf[16] = {0};
     int pid;
 
     if (fgets(buf, sizeof(buf), f) == NULL) {

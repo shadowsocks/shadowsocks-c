@@ -1,3 +1,6 @@
 usr/include/
 usr/lib/*/libshadowsocks-libev.so
+usr/lib/*/libshadowsocks-libev.a
+usr/lib/*/shadowsocks-libev/
+usr/lib/*/cmake/shadowsocks-libev/
 usr/lib/*/pkgconfig/

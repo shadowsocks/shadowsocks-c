@@ -43,7 +43,7 @@ if(SS_BUILD_STATIC_LIBRARY)
         endif()
     endif()
     # Resolve libdir relative to this installed config, supporting --prefix relocation.
-    file(RELATIVE_PATH libdir_from_config "/${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-libev" "/${CMAKE_INSTALL_LIBDIR}")
+    file(RELATIVE_PATH libdir_from_config "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-libev" "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}")
     string(APPEND private_content "get_filename_component(_ss_libdir \"\${CMAKE_CURRENT_LIST_DIR}/${libdir_from_config}\" ABSOLUTE)\n")
     string(APPEND private_content "set_property(TARGET shadowsocks::static PROPERTY INTERFACE_LINK_LIBRARIES \"${private_links}\")\n")
 endif()
@@ -63,7 +63,7 @@ write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/package/shadowsock
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev-config.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev-config-version.cmake"
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-libev)
-file(RELATIVE_PATH SS_PC_PREFIX_RELATIVE "/${CMAKE_INSTALL_LIBDIR}/pkgconfig" "/")
+file(RELATIVE_PATH SS_PC_PREFIX_RELATIVE "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/pkgconfig" "${CMAKE_CURRENT_BINARY_DIR}")
 configure_file(cmake/shadowsocks-libev.pc.cmake "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev.pc.in" @ONLY)
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/shadowsocks-libev.pc"
     INPUT "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev.pc.in")

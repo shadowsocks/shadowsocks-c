@@ -5,3 +5,4 @@ debian/shadowsocks-libev-*.service lib/systemd/system
 usr/bin/
 usr/share/man/
 usr/share/doc/shadowsocks-libev/
+usr/share/licenses/shadowsocks-libev/

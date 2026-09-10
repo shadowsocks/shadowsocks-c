@@ -31,7 +31,14 @@ main(int argc, char **argv)
 
     struct ss_process *process = ss_process_new("ss-no-such-program-ef91ac");
     ss_process_arg(process, "ss-no-such-program-ef91ac");
-    assert(ss_process_start(process, 0) == -1);
+    int started = ss_process_start(process, 0);
+    assert(started == -1 || started == 0);
+    /* POSIX permits exec failure to be reported by child exit (notably under
+     * Valgrind's spawn wrapper), rather than synchronously by posix_spawnp. */
+    if (started == 0) {
+        for (unsigned i = 0; i < 500 && ss_process_running(process); i++) pause_tick();
+        assert(!ss_process_running(process));
+    }
     ss_process_free(process);
 
     char path[4096];

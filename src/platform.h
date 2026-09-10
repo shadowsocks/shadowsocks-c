@@ -10,6 +10,7 @@
 typedef SOCKET ss_socket_t;
 #else
 #include <sys/socket.h>
+#include <netinet/in.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <fcntl.h>

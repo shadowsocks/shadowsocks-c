@@ -98,7 +98,7 @@ jobs:
 
       - name: Run clang-tidy on project sources
         run: |
-          run-clang-tidy-18 -quiet -p build '/src/[^/]+\.c$' 2>/dev/null | tee tidy.log || true
+          run-clang-tidy-18 -quiet -p build "$PWD/src/[^/]+\.c$" 2>/dev/null | tee tidy.log || true
           grep 'warning:' tidy.log | sort -u > warnings.txt || true
           count="$(wc -l < warnings.txt)"
           echo "clang-tidy warnings: $count (max allowed: $MAX_WARNINGS)"

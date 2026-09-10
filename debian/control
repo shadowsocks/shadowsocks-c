@@ -7,6 +7,7 @@ Uploaders:
  Boyuan Yang <byang@debian.org>,
  Roger Shimizu <rosh@debian.org>
 Build-Depends:
+ cmake (>= 3.20),
  asciidoc-base | asciidoc,
  debhelper (>= 10),
  libc-ares-dev,
@@ -51,6 +52,11 @@ Section: libdevel
 Breaks: shadowsocks-libev (<< 2.4.0)
 Depends:
  libshadowsocks-libev2 (= ${binary:Version}),
+ libc-ares-dev,
+ libev-dev,
+ libmbedtls-dev,
+ libpcre2-dev,
+ libsodium-dev,
  ${misc:Depends}
 Description: lightweight and secure socks5 proxy (development files)
  Shadowsocks-libev is a lightweight and secure socks5 proxy for
