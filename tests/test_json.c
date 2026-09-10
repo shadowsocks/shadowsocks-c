@@ -139,6 +139,15 @@ test_parse_empty_array(void)
 int
 main(void)
 {
+    const char *wide_numbers = "[4294967296,9223372036854775807,-4294967296,0.4294967296]";
+    json_value *wide = json_parse(wide_numbers, strlen(wide_numbers));
+    assert(wide != NULL && wide->type == json_array && wide->u.array.length == 4);
+    assert(wide->u.array.values[0]->u.integer == INT64_C(4294967296));
+    assert(wide->u.array.values[1]->u.integer == INT64_MAX);
+    assert(wide->u.array.values[2]->u.integer == -INT64_C(4294967296));
+    assert(wide->u.array.values[3]->u.dbl > 0.4294967295 && wide->u.array.values[3]->u.dbl < 0.4294967297);
+    json_value_free(wide);
+    assert(json_parse("9223372036854775808", 19) == NULL);
     test_parse_simple_object();
     test_parse_array();
     test_parse_nested();

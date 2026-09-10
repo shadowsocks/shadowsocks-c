@@ -778,9 +778,10 @@ json_value * json_parse_ex (json_settings * settings,
                      }
 
                      /* Overflow check for integer */
-                     long prev = top->u.integer;
-                     if ((prev > 0 && (prev > (LONG_MAX / 10) || (prev == (LONG_MAX / 10) && (b - '0') > (LONG_MAX % 10)))) ||
-                         (prev < 0 && (prev < (LONG_MIN / 10) || (prev == (LONG_MIN / 10) && -(b - '0') < (LONG_MIN % 10))))) {
+                     json_int_t prev = top->u.integer;
+                     /* Digits accumulate as a positive int64_t magnitude;
+                      * long is only 32 bits on LLP64 platforms such as Windows. */
+                     if (prev > (INT64_MAX / 10) || (prev == (INT64_MAX / 10) && (b - '0') > (INT64_MAX % 10))) {
                         sprintf(error, "%d:%d: Integer too large (overflow)", line_and_col);
                         goto e_failed;
                      }
@@ -789,7 +790,7 @@ json_value * json_parse_ex (json_settings * settings,
                   }
 
                   /* Overflow check for fraction */
-                  if (num_fraction > (LONG_MAX / 10) || (num_fraction == (LONG_MAX / 10) && (b - '0') > (LONG_MAX % 10))) {
+                  if (num_fraction > (INT64_MAX / 10) || (num_fraction == (INT64_MAX / 10) && (b - '0') > (INT64_MAX % 10))) {
                      sprintf(error, "%d:%d: Fraction too large (overflow)", line_and_col);
                      goto e_failed;
                   }

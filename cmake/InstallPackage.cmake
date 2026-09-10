@@ -1,4 +1,5 @@
 include(CMakePackageConfigHelpers)
+if(SS_BUILD_STATIC_LIBRARY OR SS_BUILD_SHARED_LIBRARY)
 set(SS_SYSTEM_DEPENDENCIES "")
 set(SS_PC_PRIVATE "")
 set(private_links)
@@ -68,6 +69,7 @@ configure_file(cmake/shadowsocks-libev.pc.cmake "${CMAKE_CURRENT_BINARY_DIR}/pac
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/shadowsocks-libev.pc"
     INPUT "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev.pc.in")
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/shadowsocks-libev.pc" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+endif()
 
 install(FILES COPYING LICENSE third_party/README.md third_party/manifest.json
     DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/shadowsocks-libev)
