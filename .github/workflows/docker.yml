@@ -1,0 +1,104 @@
+name: docker
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/shadowsocks/shadowsocks-c
+
+jobs:
+  image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - name: Build tested static runtime image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/static/Dockerfile
+          target: runtime
+          platforms: linux/${{ matrix.arch }}
+          load: true
+          tags: shadowsocks-c:test
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,scope=docker-${{ matrix.arch }},mode=max
+      - name: Exercise read-only, unprivileged runtime containers
+        run: python3 tests/docker_smoke.py --image shadowsocks-c:test
+      - name: Log in to GHCR
+        if: github.repository == 'shadowsocks/shadowsocks-c' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish tested architecture image
+        if: github.repository == 'shadowsocks/shadowsocks-c' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          COMMIT: ${{ github.sha }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          docker tag shadowsocks-c:test "$IMAGE:sha-$COMMIT-$ARCH"
+          docker push "$IMAGE:sha-$COMMIT-$ARCH"
+
+  publish:
+    needs: image
+    if: github.repository == 'shadowsocks/shadowsocks-c' && github.event_name != 'pull_request' && (github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image tags
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.IMAGE }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=sha,format=long
+            type=semver,pattern={{version}}
+      - name: Publish multi-platform manifest
+        env:
+          COMMIT: ${{ github.sha }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          args=()
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then args+=(--tag "$tag"); fi
+          done <<< "$TAGS"
+          docker buildx imagetools create "${args[@]}" \
+            "$IMAGE:sha-$COMMIT-amd64" "$IMAGE:sha-$COMMIT-arm64"
+          docker buildx imagetools inspect "$IMAGE:sha-$COMMIT"

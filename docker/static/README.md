@@ -1,4 +1,45 @@
-# Fully static Linux builds
+# Docker image and static Linux builds
+
+Use `ghcr.io/shadowsocks/shadowsocks-c` for Linux AMD64 or ARM64. The
+[README quick start](../../README.md#docker-recommended) shows server configuration,
+TCP/UDP port mapping and a read-only configuration mount. Docker Desktop runs
+these Linux images on macOS and Windows.
+
+The default entrypoint is `ss-server -c /etc/shadowsocks-c/config.json`.
+Passing arguments overrides that default configuration argument. The image runs
+as UID/GID `65532:65532` unless `--user` is supplied; the mounted file must be
+readable by that user. Logs go to standard output/error. No writable filesystem
+is required for normal server operation.
+
+To update a running server, pull the desired tag, remove the old container with
+`docker rm -f shadowsocks-c`, and repeat the quick-start run command. The host
+configuration file is preserved. `latest` tracks `master`; choose a published
+version tag or `sha-<full-commit>` to pin a build.
+
+For a SOCKS5 client, override the entrypoint with
+`--entrypoint /usr/local/bin/ss-local`, supply a client configuration using `-c`,
+and publish the configured local TCP/UDP port. Bind the local listener to
+`0.0.0.0` inside the container and restrict its host mapping to loopback, such as
+`-p 127.0.0.1:1080:1080/tcp -p 127.0.0.1:1080:1080/udp`.
+
+## Publishing
+
+`.github/workflows/docker.yml` builds each architecture on a native runner and
+exercises the actual scratch server/client containers with concurrent TCP,
+hostname resolution, UDP and clean shutdown. PRs run these checks without
+publishing. Pushes to `master` publish `latest` and `sha-<full-commit>`; `v*`
+version tags publish the version without the leading `v` and the commit tag.
+The multi-platform tag is assembled only after both architecture tests pass.
+Publishing uses the repository's `GITHUB_TOKEN` with `packages: write`.
+
+The first image becomes available after this workflow lands on `master` and
+completes. GitHub initially creates packages as private: a package administrator
+must set `shadowsocks-c` to **Public** in its package settings before anonymous
+pulls work. This is a one-time registry setting; see
+[GitHub's container registry documentation](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#pushing-container-images).
+Until then, the quick start also provides a local image build command.
+
+## Build locally
 
 The Alpine/musl builder uses Clang with LLD by default and links both third-party dependencies and libc statically.
 `WITH_STATIC=ON` alone only selects static third-party libraries; this image also

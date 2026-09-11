@@ -30,5 +30,12 @@ COPY --from=build /out/ /
 
 # No libc, dynamic loader, package manager or shell in the runtime image.
 FROM scratch AS runtime
+LABEL org.opencontainers.image.title="shadowsocks-c" \
+      org.opencontainers.image.description="Self-contained Shadowsocks in C with libuv" \
+      org.opencontainers.image.source="https://github.com/shadowsocks/shadowsocks-c" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
 COPY --from=build /out/ /usr/local/
+USER 65532:65532
+EXPOSE 8388/tcp 8388/udp
 ENTRYPOINT ["/usr/local/bin/ss-server"]
+CMD ["-c", "/etc/shadowsocks-c/config.json"]
