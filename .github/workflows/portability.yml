@@ -73,6 +73,90 @@ jobs:
           & ./consumer/consumer_shared.exe
           if ($LASTEXITCODE -ne 0) { throw "Shared consumer failed: $LASTEXITCODE" }
 
+  static-macos:
+    runs-on: macos-latest
+    env:
+      CC: clang
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build Clang static-only installation
+        run: |
+          cmake -S . -B build-static -DCMAKE_C_COMPILER=clang -DSS_DEPENDENCY_MODE=bundled -DWITH_STATIC=ON -DSS_BUILD_STATIC_LIBRARY=ON -DSS_BUILD_SHARED_LIBRARY=OFF
+          cmake --build build-static --parallel 4
+          ctest --test-dir build-static -L 'unit|vendor' --output-on-failure --no-tests=error
+          cmake --install build-static --prefix "$PWD/install-static"
+          mv install-static relocated-static
+          cmake -S tests/consumer -B consumer-static -DCMAKE_C_COMPILER=clang -DCMAKE_PREFIX_PATH="$PWD/relocated-static"
+          cmake --build consumer-static
+          test ! -e consumer-static/consumer_shared
+          ./consumer-static/consumer_static
+      - name: Reject third-party dynamic libraries
+        run: python3 tests/check_static_runtime.py relocated-static/bin/ss-* consumer-static/consumer_static
+      - name: Exercise installed static programs
+        run: |
+          python3 tests/interop.py --self --bin relocated-static/bin
+          python3 tests/interop.py --self --bin relocated-static/bin --plugin tests/sip003_fixture.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: static-macos-${{ runner.arch }}
+          path: relocated-static/
+          if-no-files-found: error
+
+  static-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: CLANG64
+          update: true
+          install: >-
+            mingw-w64-clang-x86_64-clang
+            mingw-w64-clang-x86_64-llvm
+            mingw-w64-clang-x86_64-cmake
+            mingw-w64-clang-x86_64-ninja
+            mingw-w64-clang-x86_64-python
+      - name: Build Clang static-only installation
+        run: |
+          cmake -S . -B build-static -G Ninja -DCMAKE_C_COMPILER=clang -DSS_DEPENDENCY_MODE=bundled -DWITH_STATIC=ON -DSS_BUILD_STATIC_LIBRARY=ON -DSS_BUILD_SHARED_LIBRARY=OFF
+          cmake --build build-static --parallel 4
+          ctest --test-dir build-static -L 'unit|vendor' --output-on-failure --no-tests=error
+          cmake --install build-static --prefix "$PWD/install-static"
+          mv install-static relocated-static
+          cmake -S tests/consumer -B consumer-static -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_PREFIX_PATH="$PWD/relocated-static"
+          cmake --build consumer-static
+          test ! -e consumer-static/consumer_shared.exe
+      - name: Reject third-party DLL imports, including delay imports
+        run: python tests/check_static_runtime.py relocated-static/bin/ss-*.exe consumer-static/consumer_static.exe
+      - name: Exercise installed programs without toolchain DLLs
+        run: python tests/interop.py --self --bin relocated-static/bin --isolate-windows-runtime
+      - name: Run static consumer with only Windows system directories on PATH
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:SystemRoot\System32;$env:SystemRoot"
+          & ./consumer-static/consumer_static.exe
+          if ($LASTEXITCODE -ne 0) { throw "Static consumer failed: $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: static-windows-${{ runner.arch }}
+          path: relocated-static/
+          if-no-files-found: error
+
+  static-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build and test fully static Clang/musl executables
+        run: docker build -f docker/static/Dockerfile --target artifacts --output type=local,dest=static-linux .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: static-linux-${{ runner.arch }}
+          path: static-linux/
+          if-no-files-found: error
+
   freebsd:
     runs-on: ubuntu-latest
     steps:

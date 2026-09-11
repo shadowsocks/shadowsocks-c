@@ -147,3 +147,19 @@ submodule dependencies and reduces what is built without replacing audited
 cryptographic algorithms with project-specific implementations.
 
 See [measurements and tradeoffs](performance.md) for reproducible local results.
+
+## Static build CI
+
+The `static-macos` and `static-windows` jobs use Clang, bundled dependencies and
+`SS_BUILD_SHARED_LIBRARY=OFF`. They run unit/vendor tests, relocate the installed
+static library, build its consumer, and exercise the installed TCP/UDP programs.
+The macOS job also exercises SIP003. `tests/check_static_runtime.py` rejects
+non-system dylibs and DLLs (including Windows delay imports) in every installed
+program and the static consumer. Windows runtime tests exclude toolchain DLL
+paths. Windows uses the native [MSYS2 CLANG64 environment](https://www.msys2.org/docs/environments/).
+
+macOS and Windows retain their OS libraries; static builds on these platforms
+mean no separately distributed project, crypto, event-loop or toolchain shared
+libraries. The `static-linux` job builds the Clang/musl Dockerfile, which also
+links libc statically and rejects ELF interpreters and `NEEDED` entries. All
+three jobs publish the tested installations as workflow artifacts.
