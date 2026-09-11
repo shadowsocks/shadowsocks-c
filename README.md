@@ -1,6 +1,6 @@
 # shadowsocks-c
 
-[![Build Status](https://travis-ci.com/shadowsocks/shadowsocks-libev.svg?branch=master)](https://travis-ci.com/shadowsocks/shadowsocks-libev) [![Snap Status](https://snapcraft.io/shadowsocks-libev/badge.svg)](https://snapcraft.io/shadowsocks-libev)
+[![Build](https://github.com/shadowsocks/shadowsocks-c/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/shadowsocks/shadowsocks-c/actions/workflows/build.yml) [![Tests](https://github.com/shadowsocks/shadowsocks-c/actions/workflows/tests.yml/badge.svg?branch=master)](https://github.com/shadowsocks/shadowsocks-c/actions/workflows/tests.yml) [![Portability](https://github.com/shadowsocks/shadowsocks-c/actions/workflows/portability.yml/badge.svg?branch=master)](https://github.com/shadowsocks/shadowsocks-c/actions/workflows/portability.yml)
 
 ## Intro
 
@@ -13,6 +13,41 @@ created by [@clowwindy](https://github.com/clowwindy), and maintained by
 
 Current version: 3.3.6 | [Changelog](debian/changelog)
 
+## Project history and rename
+
+This repository began as **shadowsocks-libev**, the lightweight C implementation
+of Shadowsocks built around the libev event loop. It later entered a bug-fix-only
+maintenance phase, with new development directed toward
+[shadowsocks-rust](https://github.com/shadowsocks/shadowsocks-rust).
+
+In September 2026, the C implementation was modernized with a focus on
+self-contained builds and portability. [The build modernization](https://github.com/shadowsocks/shadowsocks-c/pull/3050)
+bundled pinned dependency sources, removed several external dependencies, and
+added static-build validation across platforms.
+[The subsequent migration](https://github.com/shadowsocks/shadowsocks-c/pull/3051)
+replaced libev with libuv, added Windows IOCP and macOS kqueue support, expanded
+asynchronous runtime DNS coverage, and strengthened CI lint checks.
+
+The project and GitHub repository were renamed **shadowsocks-c** to reflect its
+continuing identity as a pure C implementation. This repository retains the
+shadowsocks-libev commit history and releases. The canonical repository is now
+[shadowsocks/shadowsocks-c](https://github.com/shadowsocks/shadowsocks-c).
+
+### Compatibility with shadowsocks-libev
+
+- Commands such as `ss-local` and `ss-server`, the `shadowsocks.h` API, and the
+  embedding library ABI remain compatible.
+- New builds provide `libshadowsocks-c` and the CMake/pkg-config package
+  `shadowsocks-c`. Legacy library filenames and the `shadowsocks-libev` package
+  lookup name remain available as compatibility aliases.
+- Existing configuration paths, distribution package names, and service names
+  are retained. References to `shadowsocks-libev` in the installation examples
+  below refer to those existing integrations.
+
+See [the modernization notes](docs/modernization.md) for build options and
+platform support, and [the performance measurements](docs/performance.md) for
+measured tradeoffs.
+
 ## Features
 
 shadowsocks-c is written in pure C and depends on [libuv](https://libuv.org/). It's designed
@@ -21,16 +56,11 @@ to be a lightweight implementation of shadowsocks protocol, in order to keep the
 For a full list of feature comparison between different versions of shadowsocks,
 refer to the [Wiki page](https://github.com/shadowsocks/shadowsocks/wiki/Feature-Comparison-across-Different-Versions).
 
-The project is now **shadowsocks-c**. Commands (`ss-local`, `ss-server`, etc.)
-and the `shadowsocks.h` API remain compatible. New builds produce
-`libshadowsocks-c` with CMake/pkg-config package `shadowsocks-c`; legacy library
-filenames and package lookup names remain available as compatibility aliases.
-Existing configuration paths, distro package names and service names are retained.
-Repository links below still point to the current GitHub repository.
-
 ## Quick Start
 
-Snap is the recommended way to install the latest binaries.
+The Snap commands below use the existing `shadowsocks-libev` package name.
+Distribution packages may predate the modernization; to build the current
+source, follow [the CMake instructions](#build-from-source-cmake).
 
 ### Install snap core
 
