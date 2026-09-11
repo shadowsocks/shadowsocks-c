@@ -22,6 +22,10 @@ CMake adapter compiles the portable C backends listed in upstream Makefile.am;
 it is maintained by this project, not upstream. Upstream known-answer tests
 are built and run under the `vendor` CTest label. SIMD acceleration needs its
 own compiler probes and validation before enabling additional backends.
+On Windows, `LibuvWindows.cmake` applies a checked, idempotent fix to extracted
+libuv 1.52.1 CPU-info code: a mutable string temporary replaces an incompatible
+`const char **` output argument rejected by GCC 14+. The archive is unchanged.
+
 Libuv replaces libev. Its Windows socket polling uses AFD readiness requests
 completed through IOCP; macOS uses kqueue. The internal `ss_event` layer combines
 read/write watchers for each descriptor and owns libuv handle lifetime separately
