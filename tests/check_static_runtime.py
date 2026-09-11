@@ -8,7 +8,7 @@ from pathlib import Path
 
 WINDOWS_SYSTEM_DLLS = {
     'advapi32.dll', 'bcrypt.dll', 'crypt32.dll', 'dnsapi.dll', 'iphlpapi.dll',
-    'kernel32.dll', 'msvcrt.dll', 'ntdll.dll', 'ole32.dll', 'psapi.dll',
+    'dbghelp.dll', 'kernel32.dll', 'msvcrt.dll', 'ntdll.dll', 'ole32.dll', 'psapi.dll',
     'rpcrt4.dll', 'secur32.dll', 'shell32.dll', 'ucrtbase.dll', 'user32.dll',
     'userenv.dll', 'winmm.dll', 'ws2_32.dll',
 }

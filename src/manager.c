@@ -952,7 +952,7 @@ update_stat(char *port, uint64_t traffic)
 }
 
 static void
-manager_recv_cb(EV_P_ ev_io *w, int revents)
+manager_recv_cb(SS_P_ ss_io *w, int revents)
 {
     struct manager_ctx *manager = (struct manager_ctx *)w;
     socklen_t len;
@@ -1146,13 +1146,13 @@ ERROR_MSG:
 }
 
 static void
-signal_cb(EV_P_ ev_signal *w, int revents)
+signal_cb(SS_P_ ss_signal *w, int revents)
 {
-    if (revents & EV_SIGNAL) {
+    if (revents & SS_SIGNAL) {
         switch (w->signum) {
         case SIGINT:
         case SIGTERM:
-            ev_unloop(EV_A_ EVUNLOOP_ALL);
+            ss_unloop(SS_A_ SS_UNLOOP_ALL);
         }
     }
 }
@@ -1551,12 +1551,12 @@ main(int argc, char **argv)
     signal(SIGCHLD, SIG_IGN);
     signal(SIGABRT, SIG_IGN);
 
-    struct ev_signal sigint_watcher;
-    struct ev_signal sigterm_watcher;
-    ev_signal_init(&sigint_watcher, signal_cb, SIGINT);
-    ev_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
-    ev_signal_start(EV_DEFAULT, &sigint_watcher);
-    ev_signal_start(EV_DEFAULT, &sigterm_watcher);
+    struct ss_signal sigint_watcher;
+    struct ss_signal sigterm_watcher;
+    ss_signal_init(&sigint_watcher, signal_cb, SIGINT);
+    ss_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
+    ss_signal_start(SS_DEFAULT, &sigint_watcher);
+    ss_signal_start(SS_DEFAULT, &sigterm_watcher);
 
     struct manager_ctx manager;
     memset(&manager, 0, sizeof(struct manager_ctx));
@@ -1586,7 +1586,7 @@ main(int argc, char **argv)
 #endif
 
     // initialize ev loop
-    struct ev_loop *loop = EV_DEFAULT;
+    struct ss_loop *loop = SS_DEFAULT;
 
     // Clean up all existed processes
     DIR *dp;
@@ -1673,11 +1673,11 @@ main(int argc, char **argv)
     }
 
     manager.fd = sfd;
-    ev_io_init(&manager.io, manager_recv_cb, manager.fd, EV_READ);
-    ev_io_start(loop, &manager.io);
+    ss_io_init(&manager.io, manager_recv_cb, manager.fd, SS_READ);
+    ss_io_start(loop, &manager.io);
 
     // start ev loop
-    ev_run(loop, 0);
+    ss_run(loop, 0);
 
     if (verbose) {
         LOGI("closed gracefully");
@@ -1692,8 +1692,8 @@ main(int argc, char **argv)
         ss_free(server);
     }
 
-    ev_signal_stop(EV_DEFAULT, &sigint_watcher);
-    ev_signal_stop(EV_DEFAULT, &sigterm_watcher);
+    ss_signal_stop(SS_DEFAULT, &sigint_watcher);
+    ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
     ss_free(working_dir);
     free_addr(&ip_addr);
 

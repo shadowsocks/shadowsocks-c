@@ -74,16 +74,16 @@
 #define EWOULDBLOCK EAGAIN
 #endif
 
-static void server_recv_cb(EV_P_ ev_io *w, int revents);
-static void remote_recv_cb(EV_P_ ev_io *w, int revents);
-static void remote_timeout_cb(EV_P_ ev_timer *watcher, int revents);
+static void server_recv_cb(SS_P_ ss_io *w, int revents);
+static void remote_recv_cb(SS_P_ ss_io *w, int revents);
+static void remote_timeout_cb(SS_P_ ss_timer *watcher, int revents);
 
 static char *hash_key(const int af, const struct sockaddr_storage *addr);
 #ifdef MODULE_REMOTE
 static void resolv_free_cb(void *data);
 static void resolv_cb(struct sockaddr *addr, void *data);
 #endif
-static void close_and_free_remote(EV_P_ remote_ctx_t *ctx);
+static void close_and_free_remote(SS_P_ remote_ctx_t *ctx);
 static remote_ctx_t *new_remote(int fd, server_ctx_t *server_ctx);
 
 #ifdef __ANDROID__
@@ -587,8 +587,8 @@ new_remote(int fd, server_ctx_t *server_ctx)
     ctx->server_ctx = server_ctx;
     ctx->af         = AF_UNSPEC;
 
-    ev_io_init(&ctx->io, remote_recv_cb, fd, EV_READ);
-    ev_timer_init(&ctx->watcher, remote_timeout_cb, server_ctx->timeout,
+    ss_io_init(&ctx->io, remote_recv_cb, fd, SS_READ);
+    ss_timer_init(&ctx->watcher, remote_timeout_cb, server_ctx->timeout,
                   server_ctx->timeout);
 
     return ctx;
@@ -602,7 +602,7 @@ new_server_ctx(int fd)
 
     ctx->fd = fd;
 
-    ev_io_init(&ctx->io, server_recv_cb, fd, EV_READ);
+    ss_io_init(&ctx->io, server_recv_cb, fd, SS_READ);
 
     return ctx;
 }
@@ -621,7 +621,7 @@ new_query_ctx(char *buf, size_t len)
 }
 
 void
-close_and_free_query(EV_P_ struct query_ctx *ctx)
+close_and_free_query(SS_P_ struct query_ctx *ctx)
 {
     if (ctx != NULL) {
         if (ctx->buf != NULL) {
@@ -635,11 +635,11 @@ close_and_free_query(EV_P_ struct query_ctx *ctx)
 #endif
 
 void
-close_and_free_remote(EV_P_ remote_ctx_t *ctx)
+close_and_free_remote(SS_P_ remote_ctx_t *ctx)
 {
     if (ctx != NULL) {
-        ev_timer_stop(EV_A_ & ctx->watcher);
-        ev_io_stop(EV_A_ & ctx->io);
+        ss_timer_stop(SS_A_ & ctx->watcher);
+        ss_io_stop(SS_A_ & ctx->io);
         ss_socket_close(ctx->fd);
         if (ctx->udp_session != NULL
             && ctx->server_ctx != NULL
@@ -651,7 +651,7 @@ close_and_free_remote(EV_P_ remote_ctx_t *ctx)
 }
 
 static void
-remote_timeout_cb(EV_P_ ev_timer *watcher, int revents)
+remote_timeout_cb(SS_P_ ss_timer *watcher, int revents)
 {
     remote_ctx_t *remote_ctx
         = ss_container_of(watcher, remote_ctx_t, watcher);
@@ -680,7 +680,7 @@ static void
 resolv_cb(struct sockaddr *addr, void *data)
 {
     struct query_ctx *query_ctx = (struct query_ctx *)data;
-    struct ev_loop *loop        = query_ctx->server_ctx->loop;
+    struct ss_loop *loop        = query_ctx->server_ctx->loop;
 
     if (addr == NULL) {
         LOGE("[udp] unable to resolve");
@@ -747,15 +747,15 @@ resolv_cb(struct sockaddr *addr, void *data)
             if (s == -1) {
                 ERROR("[udp] sendto_remote");
                 if (!cache_hit) {
-                    close_and_free_remote(EV_A_ remote_ctx);
+                    close_and_free_remote(SS_A_ remote_ctx);
                 }
             } else {
                 if (!cache_hit) {
                     // Add to conn cache
                     char *key = hash_key(AF_UNSPEC, &remote_ctx->src_addr);
                     cache_insert(query_ctx->server_ctx->conn_cache, key, HASH_KEY_LEN, (void *)remote_ctx);
-                    ev_io_start(EV_A_ & remote_ctx->io);
-                    ev_timer_start(EV_A_ & remote_ctx->watcher);
+                    ss_io_start(SS_A_ & remote_ctx->io);
+                    ss_timer_start(SS_A_ & remote_ctx->watcher);
                 }
             }
         }
@@ -788,7 +788,7 @@ void convert_ipv4_mapped_ipv6(struct sockaddr_storage* addr) {
 }
 
 static void
-remote_recv_cb(EV_P_ ev_io *w, int revents)
+remote_recv_cb(SS_P_ ss_io *w, int revents)
 {
     ssize_t r;
     remote_ctx_t *remote_ctx = (remote_ctx_t *)w;
@@ -797,7 +797,7 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
     // server has been closed
     if (server_ctx == NULL) {
         LOGE("[udp] invalid server");
-        close_and_free_remote(EV_A_ remote_ctx);
+        close_and_free_remote(SS_A_ remote_ctx);
         return;
     }
 
@@ -984,7 +984,7 @@ remote_recv_cb(EV_P_ ev_io *w, int revents)
 
     // handle the UDP packet successfully,
     // triger the timer
-    ev_timer_again(EV_A_ & remote_ctx->watcher);
+    ss_timer_again(SS_A_ & remote_ctx->watcher);
 
 CLEAN_UP:
 
@@ -993,7 +993,7 @@ CLEAN_UP:
 }
 
 static void
-server_recv_cb(EV_P_ ev_io *w, int revents)
+server_recv_cb(SS_P_ ss_io *w, int revents)
 {
     server_ctx_t *server_ctx = (server_ctx_t *)w;
     struct sockaddr_storage src_addr;
@@ -1250,7 +1250,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
 
     // reset the timer
     if (remote_ctx != NULL) {
-        ev_timer_again(EV_A_ & remote_ctx->watcher);
+        ss_timer_again(SS_A_ & remote_ctx->watcher);
     }
 
     if (remote_ctx == NULL) {
@@ -1345,8 +1345,8 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
         cache_insert(conn_cache, key, HASH_KEY_LEN, (void *)remote_ctx);
 
         // Start remote io
-        ev_io_start(EV_A_ & remote_ctx->io);
-        ev_timer_start(EV_A_ & remote_ctx->watcher);
+        ss_io_start(SS_A_ & remote_ctx->io);
+        ss_timer_start(SS_A_ & remote_ctx->watcher);
     }
 
     if (offset > 0) {
@@ -1451,7 +1451,7 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
         if (s == -1) {
             ERROR("[udp] sendto_remote");
             if (!cache_hit) {
-                close_and_free_remote(EV_A_ remote_ctx);
+                close_and_free_remote(SS_A_ remote_ctx);
             }
         } else {
             if (!cache_hit) {
@@ -1460,8 +1460,8 @@ server_recv_cb(EV_P_ ev_io *w, int revents)
                 char *key = hash_key(remote_ctx->af, &remote_ctx->src_addr);
                 cache_insert(server_ctx->conn_cache, key, HASH_KEY_LEN, (void *)remote_ctx);
 
-                ev_io_start(EV_A_ & remote_ctx->io);
-                ev_timer_start(EV_A_ & remote_ctx->watcher);
+                ss_io_start(SS_A_ & remote_ctx->io);
+                ss_timer_start(SS_A_ & remote_ctx->watcher);
             }
         }
     } else {
@@ -1500,7 +1500,7 @@ free_cb(void *key, void *element)
         LOGI("[udp] one connection freed");
     }
 
-    close_and_free_remote(EV_DEFAULT, remote_ctx);
+    close_and_free_remote(SS_DEFAULT, remote_ctx);
 }
 
 int
@@ -1515,7 +1515,7 @@ init_udprelay(const char *server_host, const char *server_port,
 {
     s_port = server_port;
     // Initialize ev loop
-    struct ev_loop *loop = EV_DEFAULT;
+    struct ss_loop *loop = SS_DEFAULT;
 
     // Initialize MTU
     if (mtu > 0) {
@@ -1556,7 +1556,7 @@ init_udprelay(const char *server_host, const char *server_port,
 #endif
 #endif
 
-    ev_io_start(loop, &server_ctx->io);
+    ss_io_start(loop, &server_ctx->io);
 
     server_ctx_list[server_num++] = server_ctx;
 
@@ -1566,10 +1566,10 @@ init_udprelay(const char *server_host, const char *server_port,
 void
 free_udprelay()
 {
-    struct ev_loop *loop = EV_DEFAULT;
+    struct ss_loop *loop = SS_DEFAULT;
     while (server_num > 0) {
         server_ctx_t *server_ctx = server_ctx_list[--server_num];
-        ev_io_stop(loop, &server_ctx->io);
+        ss_io_stop(loop, &server_ctx->io);
         ss_socket_close(server_ctx->fd);
         cache_delete(server_ctx->conn_cache, 0);
 #ifdef MODULE_LOCAL

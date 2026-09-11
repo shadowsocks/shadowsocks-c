@@ -64,6 +64,7 @@ set(LIBSHADOWSOCKS_LIBEV_SOURCE
         udprelay.c
         cache.c
         local.c
+        resolv.c
         ssurl.c
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}

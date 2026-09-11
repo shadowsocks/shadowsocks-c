@@ -57,7 +57,7 @@ extern int verbose;
 static const char valid_label_bytes[] =
     "-0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz";
 
-static int
+int
 parse_numeric_port(const char *port, uint16_t *port_out)
 {
     char *endptr;
@@ -178,6 +178,8 @@ get_sockaddr(char *host, char *port,
         }
         return 0;
     } else {
+        /* Event-loop callers must use the asynchronous resolver for names. */
+        if (!block) return -1;
 #ifdef __ANDROID__
         extern int vpn;
         if (vpn) {

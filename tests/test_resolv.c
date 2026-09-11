@@ -1,6 +1,6 @@
 /* Exercise real c-ares cancellation with outstanding A and AAAA requests. */
 #include "test_helpers.h"
-#include <ev.h>
+#include "ss_event.h"
 #include "resolv.h"
 
 int verbose = 0;
@@ -32,7 +32,7 @@ int main(void)
     assert(getsockname(sink, (struct sockaddr *)&address, &size) == 0);
     char nameserver[64];
     snprintf(nameserver, sizeof(nameserver), "127.0.0.1:%u", ntohs(address.sin_port));
-    struct ev_loop *loop = ev_loop_new(0);
+    struct ss_loop *loop = ss_loop_new(0);
     assert(loop != NULL);
     for (unsigned round = 0; round < 3; round++) {
         struct result results[64] = {{0}};
@@ -42,15 +42,15 @@ int main(void)
             snprintf(hostname, sizeof(hostname), "pending-%u.invalid", i);
             resolv_start(hostname, htons(443), resolved, released, &results[i]);
         }
-        ev_run(loop, EVRUN_NOWAIT);
+        ss_run(loop, SS_RUN_NOWAIT);
         resolv_shutdown(loop);
         for (unsigned i = 0; i < 64; i++) {
             assert(results[i].called == 1);
             assert(results[i].freed == 1);
         }
-        assert(ev_run(loop, EVRUN_NOWAIT) == 0);
+        assert(ss_run(loop, SS_RUN_NOWAIT) == 0);
     }
-    ev_loop_destroy(loop);
+    ss_loop_destroy(loop);
     ss_socket_close(sink);
     return 0;
 }

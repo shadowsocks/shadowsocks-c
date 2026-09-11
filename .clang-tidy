@@ -8,7 +8,7 @@
 # Checks disabled below are either stylistic churn (macro-parentheses,
 # reserved-identifier: the codebase uses _prefixed names and vendored
 # uthash.h/generated config.h trip them ~600 times) or produce false
-# positives with the libev callback style (casting-through-void,
+# positives with the event callback style (casting-through-void,
 # multi-level-implicit-pointer-conversion).
 Checks: >
   clang-analyzer-*,

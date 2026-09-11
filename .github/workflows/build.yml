@@ -20,11 +20,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev
+          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libuv1-dev libc-ares-dev
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install mbedtls@3 libsodium libev c-ares pcre2
+        run: brew install mbedtls@3 libsodium libuv c-ares pcre2
 
       - name: Build
         run: |
@@ -41,7 +41,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev
+          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libuv1-dev libc-ares-dev
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake debhelper dpkg-dev fakeroot asciidoc-base xmlto pkg-config
 

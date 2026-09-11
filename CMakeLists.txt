@@ -98,6 +98,7 @@ endif()
 include(${PROJECT_SOURCE_DIR}/cmake/configure.cmake)
 configure_file(${PROJECT_SOURCE_DIR}/cmake/config.h.cmake ${PROJECT_BINARY_DIR}/src/config.h)
 include(cmake/ProjectOptions.cmake)
+ss_project_options(ss_ev)
 include_directories(${PROJECT_BINARY_DIR}/src)
 add_compile_definitions(HAVE_CONFIG_H)
 

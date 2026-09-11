@@ -16,6 +16,7 @@ RUN --network=none cmake -S . -B /build \
  && cmake --build /build --parallel 4 \
  && ctest --test-dir /build -L 'unit|vendor' --output-on-failure --no-tests=error \
  && python3 tests/interop.py --self --bin /build/bin \
+ && python3 tests/async_dns_interop.py --bin /build/bin \
  && cmake --install /build --strip \
  && for binary in /out/bin/ss-*; do \
       file "$binary"; \

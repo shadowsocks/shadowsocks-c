@@ -26,7 +26,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL Darwin)
 endif ()
 
 check_include_files(dlfcn.h HAVE_DLFCN_H)
-check_include_files(ev.h HAVE_EV_H)
 check_include_files(fcntl.h HAVE_FCNTL_H)
 check_function_exists(fork HAVE_FORK)
 check_function_exists(getpwnam_r HAVE_GETPWNAM_R)

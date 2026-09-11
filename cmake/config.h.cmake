@@ -17,8 +17,6 @@
 /* Define to 1 if you have the <dlfcn.h> header file. */
 #cmakedefine HAVE_DLFCN_H 1
 
-/* Define to 1 if you have the <ev.h> header file. */
-#cmakedefine HAVE_EV_H 1
 
 /* Define to 1 if you have the <fcntl.h> header file. */
 #cmakedefine HAVE_FCNTL_H 1

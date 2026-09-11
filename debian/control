@@ -11,7 +11,7 @@ Build-Depends:
  asciidoc-base | asciidoc,
  debhelper (>= 10),
  libc-ares-dev,
- libev-dev,
+ libuv1-dev,
  libmbedtls-dev,
  libpcre2-dev,
  libsodium-dev (>= 1.0.12),
@@ -53,7 +53,7 @@ Breaks: shadowsocks-libev (<< 2.4.0)
 Depends:
  libshadowsocks-libev2 (= ${binary:Version}),
  libc-ares-dev,
- libev-dev,
+ libuv1-dev,
  libmbedtls-dev,
  libpcre2-dev,
  libsodium-dev,

@@ -22,17 +22,13 @@
 #ifndef _REDIR_H
 #define _REDIR_H
 
-#ifdef HAVE_LIBEV_EV_H
-#include <libev/ev.h>
-#else
-#include <ev.h>
-#endif
+#include "ss_event.h"
 
 #include "crypto.h"
 #include "jconf.h"
 
 typedef struct listen_ctx {
-    ev_io io;
+    ss_io io;
     int remote_num;
     int timeout;
     int fd;
@@ -42,7 +38,7 @@ typedef struct listen_ctx {
 } listen_ctx_t;
 
 typedef struct server_ctx {
-    ev_io io;
+    ss_io io;
     int connected;
     struct server *server;
 } server_ctx_t;
@@ -59,12 +55,12 @@ typedef struct server {
     struct remote *remote;
 
     struct sockaddr_storage destaddr;
-    ev_timer delayed_connect_watcher;
+    ss_timer delayed_connect_watcher;
 } server_t;
 
 typedef struct remote_ctx {
-    ev_io io;
-    ev_timer watcher;
+    ss_io io;
+    ss_timer watcher;
     int connected;
     struct remote *remote;
 } remote_ctx_t;

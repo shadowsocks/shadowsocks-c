@@ -25,11 +25,7 @@
 
 #include "core.h"
 
-#ifdef HAVE_LIBEV_EV_H
-#include <libev/ev.h>
-#else
-#include <ev.h>
-#endif
+#include "ss_event.h"
 
 #ifdef __MINGW32__
 #include "ss_windows.h"
@@ -41,7 +37,7 @@
 #include "common.h"
 
 typedef struct listen_ctx {
-    ev_io io;
+    ss_io io;
     char *iface;
     int remote_num;
     int timeout;
@@ -51,7 +47,7 @@ typedef struct listen_ctx {
 } listen_ctx_t;
 
 typedef struct server_ctx {
-    ev_io io;
+    ss_io io;
     int connected;
     struct server *server;
 } server_ctx_t;
@@ -59,6 +55,9 @@ typedef struct server_ctx {
 typedef struct server {
     int fd;
     int stage;
+    struct local_dns_query *dns_query;
+    int dns_done, dns_success;
+    struct sockaddr_storage dns_address;
 
     cipher_ctx_t *e_ctx;
     cipher_ctx_t *d_ctx;
@@ -70,14 +69,14 @@ typedef struct server {
     buffer_t *buf;
     buffer_t *abuf;
 
-    ev_timer delayed_connect_watcher;
+    ss_timer delayed_connect_watcher;
 
     struct ss_list_item entries;
 } server_t;
 
 typedef struct remote_ctx {
-    ev_io io;
-    ev_timer watcher;
+    ss_io io;
+    ss_timer watcher;
 
     int connected;
     struct remote *remote;

@@ -28,10 +28,10 @@
     "sha256": "adbdd8f16149e81ac6078a03aca6fc03b592b89ef7b5ed83841c086191be3349"
   },
   {
-    "name": "ev",
-    "version": "4.33",
-    "url": "https://dist.schmorp.de/libev/libev-4.33.tar.gz",
-    "archive": "libev-4.33.tar.gz",
-    "sha256": "507eb7b8d1015fbec5b935f34ebed15bf346bed04a11ab82b8eee848c4205aea"
+    "name": "uv",
+    "version": "1.52.1",
+    "url": "https://dist.libuv.org/dist/v1.52.1/libuv-v1.52.1.tar.gz",
+    "archive": "libuv-v1.52.1.tar.gz",
+    "sha256": "66d511b9e6e334c0e62279eb234fbfb2b3110b1479c09b95b44c7afca8cff9e7"
   }
 ]

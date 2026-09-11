@@ -15,7 +15,7 @@ Current version: 3.3.6 | [Changelog](debian/changelog)
 
 ## Features
 
-Shadowsocks-libev is written in pure C and depends on [libev](http://software.schmorp.de/pkg/libev.html). It's designed
+Shadowsocks-libev is written in pure C and depends on [libuv](https://libuv.org/). It's designed
 to be a lightweight implementation of shadowsocks protocol, in order to keep the resource usage as low as possible.
 
 For a full list of feature comparison between different versions of shadowsocks,
@@ -93,7 +93,7 @@ IPv4/IPv6 CIDRs, `full:example.com` for exact domains, and
 case and respect label boundaries. Unsupported regex rules are rejected.
 
 Distribution packages can use `-DSS_DEPENDENCY_MODE=system -DWITH_STATIC=OFF`
-with libev, c-ares, libsodium, Mbed TLS 3.x, and PCRE2 development packages.
+with libuv, c-ares, libsodium, Mbed TLS 3.x, and PCRE2 development packages.
 Use `-DCMAKE_PREFIX_PATH=/opt/homebrew/opt/mbedtls@3` when needed on macOS.
 
 | Option | Default | Purpose |
@@ -196,7 +196,7 @@ ctest --test-dir build -L 'unit|vendor' --output-on-failure
 sudo cmake --install build
 ```
 
-Distribution packagers can install `libpcre2-dev libev-dev libc-ares-dev
+Distribution packagers can install `libpcre2-dev libuv1-dev libc-ares-dev
 libmbedtls-dev libsodium-dev` and select `-DSS_DEPENDENCY_MODE=system
 -DWITH_STATIC=OFF`. Documentation additionally needs asciidoc and xmlto.
 
@@ -275,7 +275,7 @@ cmake --build build-windows --parallel
 
 Cross-compilation does not run Windows tests. The portability workflow runs
 native UCRT64 tests and TCP/UDP relay checks on Windows. Bundled mode is required
-because libev must use the project's Winsock handle adapter. MSVC remains a
+with a bundled libuv IOCP backend. MSVC remains a
 separate, unsupported milestone; configuration reports this explicitly.
 The historical Autotools scripts in `docker/mingw` are superseded by this build.
 

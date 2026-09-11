@@ -7,6 +7,26 @@ on:
     branches: [master]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+          cache: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install pinned linters
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          python -m pip install ruff==0.15.6
+      - name: Lint GitHub Actions workflows
+        run: actionlint -shellcheck= -pyflakes=
+      - name: Lint Python scripts and tests
+        run: ruff check --select E9,F63,F7,F82 tests scripts
+
   tests:
     strategy:
       fail-fast: false
@@ -20,11 +40,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev valgrind
+          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libuv1-dev libc-ares-dev valgrind
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install mbedtls@3 libsodium libev c-ares pcre2
+        run: brew install mbedtls@3 libsodium libuv c-ares pcre2
 
       - name: Build test binaries
         run: |
@@ -62,7 +82,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev
+          sudo apt-get install -y libpcre2-dev libmbedtls-dev libsodium-dev libuv1-dev libc-ares-dev
 
       - name: Build with ASan + UBSan
         run: |
@@ -91,14 +111,16 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang-tidy-18 clang-tools-18 libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev
+          sudo apt-get install -y clang-tidy-18 clang-tools-18 libpcre2-dev libmbedtls-dev libsodium-dev libuv1-dev libc-ares-dev
 
       - name: Configure (compile_commands.json)
         run: cmake -S . -B build
 
       - name: Run clang-tidy on project sources
         run: |
-          run-clang-tidy-18 -quiet -p build "$PWD/src/[^/]+\.c$" 2>/dev/null | tee tidy.log || true
+          set -o pipefail
+          tidy_status=0
+          run-clang-tidy-18 -quiet -p build "$PWD/src/[^/]+\.c$" 2>&1 | tee tidy.log || tidy_status=$?
           grep 'warning:' tidy.log | sort -u > warnings.txt || true
           count="$(wc -l < warnings.txt)"
           echo "clang-tidy warnings: $count (max allowed: $MAX_WARNINGS)"
@@ -108,8 +130,8 @@ jobs:
             cat warnings.txt
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-          if ! grep -q . warnings.txt && grep -qE 'error:' tidy.log; then
-            echo "clang-tidy produced errors:"; grep -E 'error:' tidy.log | sort -u
+          if [ "$tidy_status" -ne 0 ] || grep -qE 'error:' tidy.log; then
+            echo "clang-tidy failed (exit status: $tidy_status). See tidy.log for diagnostics."
             exit 1
           fi
           if [ "$count" -gt "$MAX_WARNINGS" ]; then
@@ -117,6 +139,16 @@ jobs:
             echo "Fix the new warnings (or, if a check is misfiring, adjust .clang-tidy)."
             exit 1
           fi
+
+      - name: Upload clang-tidy diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-diagnostics
+          path: |
+            tidy.log
+            warnings.txt
+          if-no-files-found: ignore
 
   coverage:
     runs-on: ubuntu-latest
@@ -126,7 +158,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y lcov libpcre2-dev libmbedtls-dev libsodium-dev libev-dev libc-ares-dev
+          sudo apt-get install -y lcov libpcre2-dev libmbedtls-dev libsodium-dev libuv1-dev libc-ares-dev
 
       - name: Build with coverage instrumentation
         run: |
@@ -160,7 +192,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Install dependencies and independent peer
-        run: brew install mbedtls@3 libsodium libev c-ares pcre2 shadowsocks-rust
+        run: brew install mbedtls@3 libsodium libuv c-ares pcre2 shadowsocks-rust
       - name: Build
         run: |
           cmake -S . -B build -DSS_DEPENDENCY_MODE=system -DWITH_STATIC=OFF

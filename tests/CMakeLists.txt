@@ -199,3 +199,10 @@ endif()
 ss_add_test(test_acl_literal
     "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.c;${PROJECT_SOURCE_DIR}/src/ipset.c;${PROJECT_SOURCE_DIR}/src/rule.c;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_LITERAL_LIBS}")
+
+ss_add_test(test_event "test_event.c" "ss_ev")
+set_tests_properties(test_event PROPERTIES TIMEOUT 30)
+ss_add_test(test_resolv_async
+    "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "ss_ev;ss_cares;ss_sodium")
+set_tests_properties(test_resolv_async PROPERTIES TIMEOUT 30)

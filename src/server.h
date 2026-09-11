@@ -26,11 +26,7 @@
 #include <time.h>
 #include "core.h"
 
-#ifdef HAVE_LIBEV_EV_H
-#include <libev/ev.h>
-#else
-#include <ev.h>
-#endif
+#include "ss_event.h"
 
 #ifdef __MINGW32__
 #include "ss_windows.h"
@@ -43,16 +39,16 @@
 #include "common.h"
 
 typedef struct listen_ctx {
-    ev_io io;
+    ss_io io;
     int fd;
     int timeout;
     char *iface;
-    struct ev_loop *loop;
+    struct ss_loop *loop;
 } listen_ctx_t;
 
 typedef struct server_ctx {
-    ev_io io;
-    ev_timer watcher;
+    ss_io io;
+    ss_timer watcher;
     int connected;
     struct server *server;
 } server_ctx_t;
@@ -101,7 +97,7 @@ typedef struct query {
 } query_t;
 
 typedef struct remote_ctx {
-    ev_io io;
+    ss_io io;
     int connected;
     struct remote *remote;
 } remote_ctx_t;

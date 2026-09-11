@@ -24,6 +24,8 @@ jobs:
           ctest --test-dir build -L 'unit|vendor' --output-on-failure --no-tests=error
       - name: Real TCP and UDP relay
         run: python3 tests/interop.py --self --bin build/bin
+      - name: Asynchronous hostname ACL bypass
+        run: python3 tests/async_dns_interop.py --bin build/bin
       - name: SIP003 transport and child cleanup
         if: matrix.minimal == 'OFF'
         run: python3 tests/interop.py --self --bin build/bin --plugin tests/sip003_fixture.py
@@ -59,6 +61,7 @@ jobs:
           ctest --test-dir build -L 'unit|vendor' --output-on-failure --no-tests=error
           objdump -p build/bin/ss-server.exe | sed -n '/DLL Name/p'
           python tests/interop.py --self --bin build/bin --isolate-windows-runtime
+          python tests/async_dns_interop.py --bin build/bin --isolate-windows-runtime
       - name: Installed consumers
         run: |
           cmake --install build --prefix "$PWD/install"
@@ -95,6 +98,7 @@ jobs:
       - name: Exercise installed static programs
         run: |
           python3 tests/interop.py --self --bin relocated-static/bin
+          python3 tests/async_dns_interop.py --bin relocated-static/bin
           python3 tests/interop.py --self --bin relocated-static/bin --plugin tests/sip003_fixture.py
       - uses: actions/upload-artifact@v4
         with:
@@ -132,7 +136,9 @@ jobs:
       - name: Reject third-party DLL imports, including delay imports
         run: python tests/check_static_runtime.py relocated-static/bin/ss-*.exe consumer-static/consumer_static.exe
       - name: Exercise installed programs without toolchain DLLs
-        run: python tests/interop.py --self --bin relocated-static/bin --isolate-windows-runtime
+        run: |
+          python tests/interop.py --self --bin relocated-static/bin --isolate-windows-runtime
+          python tests/async_dns_interop.py --bin relocated-static/bin --isolate-windows-runtime
       - name: Run static consumer with only Windows system directories on PATH
         shell: pwsh
         run: |
@@ -171,6 +177,7 @@ jobs:
             cmake --build build --parallel 4
             ctest --test-dir build -L 'unit|vendor' --output-on-failure --no-tests=error
             python3 tests/interop.py --self --bin build/bin
+            python3 tests/async_dns_interop.py --bin build/bin
             cmake --install build --prefix "$PWD/install"
             cmake -S tests/consumer -B consumer -G Ninja -DCMAKE_PREFIX_PATH="$PWD/install"
             cmake --build consumer

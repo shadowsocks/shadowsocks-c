@@ -25,11 +25,7 @@
 
 #include <time.h>
 
-#ifdef HAVE_LIBEV_EV_H
-#include <libev/ev.h>
-#else
-#include <ev.h>
-#endif
+#include "ss_event.h"
 
 #include "crypto.h"
 #include "jconf.h"
@@ -49,7 +45,7 @@
 #define MAX_ADDR_HEADER_SIZE (1 + 256 + 2) // 1-byte atyp + 256-byte hostname + 2-byte port
 
 typedef struct server_ctx {
-    ev_io io;
+    ss_io io;
     int fd;
     crypto_t *crypto;
     int timeout;
@@ -63,7 +59,7 @@ typedef struct server_ctx {
 #endif
 #endif
 #ifdef MODULE_REMOTE
-    struct ev_loop *loop;
+    struct ss_loop *loop;
 #endif
 } server_ctx_t;
 
@@ -79,8 +75,8 @@ typedef struct query_ctx {
 #endif
 
 typedef struct remote_ctx {
-    ev_io io;
-    ev_timer watcher;
+    ss_io io;
+    ss_timer watcher;
     int af;
     int fd;
     struct sockaddr_storage src_addr;

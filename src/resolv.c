@@ -43,11 +43,7 @@
 #endif
 #include <ares.h>
 
-#ifdef HAVE_LIBEV_EV_H
-#include <libev/ev.h>
-#else
-#include <ev.h>
-#endif
+#include "ss_event.h"
 
 #include "core.h"
 
@@ -59,14 +55,17 @@
  * Implement DNS resolution interface using libc-ares
  */
 
-#define SS_NUM_IOS 6
-#define SS_INVALID_FD -1
 #define SS_TIMER_AFTER 1.0
 
+struct resolv_io {
+    ss_io io;
+    struct resolv_io *next;
+};
+
 struct resolv_ctx {
-    struct ev_io ios[SS_NUM_IOS];
-    struct ev_timer timer;
-    ev_tstamp last_tick;
+    struct resolv_io *ios;
+    struct ss_timer timer;
+    ss_tstamp last_tick;
 
     ares_channel channel;
     struct ares_options options;
@@ -90,7 +89,7 @@ struct resolv_query {
 extern int verbose;
 
 static struct resolv_ctx default_ctx;
-static struct ev_loop *default_loop;
+static struct ss_loop *default_loop;
 
 enum {
     MODE_IPV4_FIRST = 0,
@@ -99,8 +98,8 @@ enum {
 
 static int resolv_mode = MODE_IPV4_FIRST;
 
-static void resolv_sock_cb(struct ev_loop *, struct ev_io *, int);
-static void resolv_timer_cb(struct ev_loop *, struct ev_timer *, int);
+static void resolv_sock_cb(struct ss_loop *, struct ss_io *, int);
+static void resolv_timer_cb(struct ss_loop *, struct ss_timer *, int);
 static void resolv_sock_state_cb(void *, ares_socket_t, int, int);
 
 static void dns_query_v4_cb(void *, int, int, struct hostent *);
@@ -116,22 +115,22 @@ static struct sockaddr *choose_any(struct resolv_query *);
  * DNS UDP socket activity callback
  */
 static void
-resolv_sock_cb(EV_P_ ev_io *w, int revents)
+resolv_sock_cb(SS_P_ ss_io *w, int revents)
 {
     ares_socket_t rfd = ARES_SOCKET_BAD, wfd = ARES_SOCKET_BAD;
 
-    if (revents & EV_READ)
+    if (revents & SS_READ)
         rfd = w->fd;
-    if (revents & EV_WRITE)
+    if (revents & SS_WRITE)
         wfd = w->fd;
 
-    default_ctx.last_tick = ev_now(default_loop);
+    default_ctx.last_tick = ss_now(default_loop);
 
     ares_process_fd(default_ctx.channel, rfd, wfd);
 }
 
 int
-resolv_init(struct ev_loop *loop, char *nameservers, int ipv6first)
+resolv_init(struct ss_loop *loop, char *nameservers, int ipv6first)
 {
     int status;
 
@@ -176,22 +175,23 @@ resolv_init(struct ev_loop *loop, char *nameservers, int ipv6first)
         FATAL("failed to set nameservers");
     }
 
-    for (int i = 0; i < SS_NUM_IOS; i++)
-        ev_io_init(&default_ctx.ios[i], resolv_sock_cb, SS_INVALID_FD, 0);
-
-    default_ctx.last_tick = ev_now(default_loop);
-    ev_init(&default_ctx.timer, resolv_timer_cb);
+    default_ctx.last_tick = ss_now(default_loop);
+    ss_timer_init(&default_ctx.timer, resolv_timer_cb, 0, 0);
     resolv_timer_cb(default_loop, &default_ctx.timer, 0);
 
     return 0;
 }
 
 void
-resolv_shutdown(struct ev_loop *loop)
+resolv_shutdown(struct ss_loop *loop)
 {
-    ev_timer_stop(default_loop, &default_ctx.timer);
-    for (int i = 0; i < SS_NUM_IOS; i++)
-        ev_io_stop(default_loop, &default_ctx.ios[i]);
+    ss_timer_stop(default_loop, &default_ctx.timer);
+    while (default_ctx.ios) {
+        struct resolv_io *node = default_ctx.ios;
+        default_ctx.ios = node->next;
+        ss_io_stop(default_loop, &node->io);
+        ss_free(node);
+    }
 
     ares_cancel(default_ctx.channel);
     ares_destroy(default_ctx.channel);
@@ -431,23 +431,23 @@ all_requests_are_null(struct resolv_query *query)
  *  Timer callback
  */
 static void
-resolv_timer_cb(struct ev_loop *loop, struct ev_timer *w, int revents)
+resolv_timer_cb(struct ss_loop *loop, struct ss_timer *w, int revents)
 {
-    struct resolv_ctx *ctx = ss_container_of(w, struct resolv_ctx, timer);
+    struct resolv_ctx *ctx = &default_ctx;
 
-    ev_tstamp now   = ev_now(default_loop);
-    ev_tstamp after = ctx->last_tick - now + SS_TIMER_AFTER;
+    ss_tstamp now   = ss_now(default_loop);
+    ss_tstamp after = ctx->last_tick - now + SS_TIMER_AFTER;
 
     if (after < 0.0) {
         ctx->last_tick = now;
         ares_process_fd(ctx->channel, ARES_SOCKET_BAD, ARES_SOCKET_BAD);
 
-        ev_timer_set(w, SS_TIMER_AFTER, 0.0);
+        ss_timer_set(w, SS_TIMER_AFTER, 0.0);
     } else {
-        ev_timer_set(w, after, 0.0);
+        ss_timer_set(w, after, 0.0);
     }
 
-    ev_timer_start(loop, w);
+    ss_timer_start(loop, w);
 }
 
 /*
@@ -457,35 +457,25 @@ static void
 resolv_sock_state_cb(void *data, ares_socket_t s, int read, int write)
 {
     struct resolv_ctx *ctx = (struct resolv_ctx *)data;
-    int events             = (read ? EV_READ : 0) | (write ? EV_WRITE : 0);
+    int events             = (read ? SS_READ : 0) | (write ? SS_WRITE : 0);
 
-    int i = 0, ffi = -1;
-    for (; i < SS_NUM_IOS; i++) {
-        if (ctx->ios[i].fd == s) {
-            break;
+    struct resolv_io **entry = &ctx->ios;
+    while (*entry && (ares_socket_t)(unsigned int)(*entry)->io.fd != s)
+        entry = &(*entry)->next;
+    struct resolv_io *node = *entry;
+    if (node) ss_io_stop(default_loop, &node->io);
+    if (!events) {
+        if (node) {
+            *entry = node->next;
+            ss_free(node);
         }
-
-        if (ffi < 0 && ctx->ios[i].fd == SS_INVALID_FD) {
-            // first free index
-            ffi = i;
-        }
+        return;
     }
-
-    if (i < SS_NUM_IOS) {
-        ev_io_stop(default_loop, &ctx->ios[i]);
-    } else if (ffi > -1) {
-        i = ffi;
-    } else {
-        LOGE("failed to find free I/O watcher slot for DNS query");
-        // last resort: stop io and re-use slot, will cause timeout
-        i = 0;
-        ev_io_stop(default_loop, &ctx->ios[i]);
-    }
-
-    if (events) {
-        ev_io_set(&ctx->ios[i], s, events);
-        ev_io_start(default_loop, &ctx->ios[i]);
-    } else {
-        ev_io_set(&ctx->ios[i], SS_INVALID_FD, 0);
-    }
+    if (!node) {
+        node = ss_malloc(sizeof(*node));
+        node->next = NULL;
+        *entry = node;
+        ss_io_init(&node->io, resolv_sock_cb, (int)s, events);
+    } else ss_io_set(&node->io, (int)s, events);
+    ss_io_start(default_loop, &node->io);
 }

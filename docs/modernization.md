@@ -2,7 +2,7 @@
 
 Status: complete for the agreed modernization scope. Native MSVC remains an
 explicitly deferred milestone. Implementation branch: feature/self-contained-portable-c;
-review: https://github.com/shadowsocks/shadowsocks-libev/pull/3050 (draft).
+review: https://github.com/shadowsocks/shadowsocks-libev/pull/3050 (merged).
 
 ## Compatibility contract
 
@@ -63,6 +63,22 @@ Maintainers stage the intended source files, then run
 The archive includes tracked working-tree contents (so uncommitted changes are
 included); record the final commit with a published release and use a clean
 checkout for publishing. No submodules are accepted in the archive.
+
+## Lint and static analysis
+
+The `tests` workflow runs actionlint 1.7.12 on GitHub Actions workflows and
+Ruff 0.15.6 on Python scripts/tests (`E9,F63,F7,F82`: syntax errors, invalid
+constructs and undefined names). Run the same checks locally:
+
+```sh
+actionlint -shellcheck= -pyflakes=
+uvx --from ruff==0.15.6 ruff check --select E9,F63,F7,F82 tests scripts
+```
+
+Project C builds treat compiler warnings as errors. The separate clang-tidy-18
+job analyzes project sources using the CMake compilation database and allows
+zero warnings. Tool failures and compiler errors also fail the job; complete
+diagnostics are uploaded even on failure. Vendored sources remain excluded.
 
 ## Platform validation
 
@@ -132,7 +148,7 @@ MSVC is an explicitly deferred milestone, not a supported build today. MinGW-w64
 supplies the POSIX compatibility headers/functions (`unistd.h`, `getopt`,
 `ssize_t`, string helpers) used throughout the existing CLI. Native MSVC needs
 those interfaces isolated, compiler-specific flags in the libsodium adapter,
-libev/Win32 build verification and export/import validation. CMake now rejects
+libuv/Win32 build verification and export/import validation. CMake now rejects
 MSVC early with the supported UCRT64/Zig alternatives. Removing the event loop
 or inventing replacement crypto implementations is outside this modernization.
 
@@ -163,3 +179,21 @@ mean no separately distributed project, crypto, event-loop or toolchain shared
 libraries. The `static-linux` job builds the Clang/musl Dockerfile, which also
 links libc statically and rejects ELF interpreters and `NEEDED` entries. All
 three jobs publish the tested installations as workflow artifacts.
+
+## Native event backends and asynchronous DNS
+
+Libuv 1.52.1 replaces libev in bundled builds; system builds use the distro's
+libuv. Windows uses libuv's IOCP-backed AFD socket polling and macOS uses kqueue.
+The internal event API supports independent read/write watchers on one socket,
+including stopping/freeing watchers during callbacks. Handles close separately
+from application objects. Native tests exercise 256 descriptors and verify the
+IOCP handle or kqueue descriptor on the corresponding platform.
+
+c-ares drives asynchronous A/AAAA lookups for TCP/UDP destinations and client
+hostname ACL bypass, with a dynamically sized DNS watcher list. Manager hostname
+updates also use this resolver. Runtime calls to the numeric-address helper
+cannot fall back to blocking DNS. Initial configuration/listener/proxy-address
+resolution remains synchronous before serving traffic. Tests use a local delayed
+DNS server to verify both address families, NXDOMAIN, cancellation, exactly-once
+callbacks, and timer progress while requests wait. Hostname ACL integration uses
+an unreachable proxy upstream so successful transfers prove direct resolution.
