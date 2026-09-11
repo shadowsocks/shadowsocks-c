@@ -37,6 +37,10 @@ jobs:
           cmake --build consumer
           ./consumer/consumer_static
           ./consumer/consumer_shared
+          cmake -S tests/consumer -B consumer-legacy -DSS_PACKAGE_NAME=shadowsocks-libev -DCMAKE_PREFIX_PATH="$PWD/relocated"
+          cmake --build consumer-legacy
+          ./consumer-legacy/consumer_static
+          ./consumer-legacy/consumer_shared
 
   windows:
     runs-on: windows-latest
@@ -67,6 +71,8 @@ jobs:
           cmake --install build --prefix "$PWD/install"
           cmake -S tests/consumer -B consumer -G Ninja -DCMAKE_PREFIX_PATH="$PWD/install"
           cmake --build consumer
+          cmake -S tests/consumer -B consumer-legacy -G Ninja -DSS_PACKAGE_NAME=shadowsocks-libev -DCMAKE_PREFIX_PATH="$PWD/install"
+          cmake --build consumer-legacy
       - name: Run installed consumers without toolchain DLLs
         shell: pwsh
         run: |
@@ -75,6 +81,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Static consumer failed: $LASTEXITCODE" }
           & ./consumer/consumer_shared.exe
           if ($LASTEXITCODE -ne 0) { throw "Shared consumer failed: $LASTEXITCODE" }
+          & ./consumer-legacy/consumer_static.exe
+          if ($LASTEXITCODE -ne 0) { throw "Legacy static consumer failed: $LASTEXITCODE" }
+          & ./consumer-legacy/consumer_shared.exe
+          if ($LASTEXITCODE -ne 0) { throw "Legacy shared consumer failed: $LASTEXITCODE" }
 
   static-macos:
     runs-on: macos-latest
@@ -189,7 +199,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - name: Source archive
-        run: python3 scripts/source_archive.py release/shadowsocks-libev.tar.gz
+        run: python3 scripts/source_archive.py release/shadowsocks-c.tar.gz
       - name: Prepare compiler image
         run: |
           printf 'FROM alpine:3.24\nRUN apk add --no-cache build-base cmake python3 linux-headers\n' > /tmp/ss-toolchain.Dockerfile
@@ -198,7 +208,7 @@ jobs:
         run: |
           docker run --rm --network none -v "$PWD/release:/release:ro" ss-toolchain sh -ec '
             mkdir /src
-            tar xzf /release/shadowsocks-libev.tar.gz -C /src --strip-components=1
+            tar xzf /release/shadowsocks-c.tar.gz -C /src --strip-components=1
             cmake -S /src -B /build -DCMAKE_DISABLE_FIND_PACKAGE_Python3=TRUE
             cmake --build /build --parallel 4
             ctest --test-dir /build -L "unit|vendor" --output-on-failure --no-tests=error

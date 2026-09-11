@@ -1,6 +1,9 @@
 usr/include/
 usr/lib/*/libshadowsocks-libev.so
 usr/lib/*/libshadowsocks-libev.a
-usr/lib/*/shadowsocks-libev/
+usr/lib/*/shadowsocks-c/
 usr/lib/*/cmake/shadowsocks-libev/
 usr/lib/*/pkgconfig/
+usr/lib/*/libshadowsocks-c.so
+usr/lib/*/libshadowsocks-c.a
+usr/lib/*/cmake/shadowsocks-c/

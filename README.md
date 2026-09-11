@@ -1,10 +1,10 @@
-# shadowsocks-libev
+# shadowsocks-c
 
 [![Build Status](https://travis-ci.com/shadowsocks/shadowsocks-libev.svg?branch=master)](https://travis-ci.com/shadowsocks/shadowsocks-libev) [![Snap Status](https://snapcraft.io/shadowsocks-libev/badge.svg)](https://snapcraft.io/shadowsocks-libev)
 
 ## Intro
 
-[Shadowsocks-libev](https://shadowsocks.org) is a lightweight secured SOCKS5
+[shadowsocks-c](https://shadowsocks.org) is a lightweight secured SOCKS5
 proxy for embedded devices and low-end boxes.
 
 It is a port of [Shadowsocks](https://github.com/shadowsocks/shadowsocks)
@@ -15,11 +15,18 @@ Current version: 3.3.6 | [Changelog](debian/changelog)
 
 ## Features
 
-Shadowsocks-libev is written in pure C and depends on [libuv](https://libuv.org/). It's designed
+shadowsocks-c is written in pure C and depends on [libuv](https://libuv.org/). It's designed
 to be a lightweight implementation of shadowsocks protocol, in order to keep the resource usage as low as possible.
 
 For a full list of feature comparison between different versions of shadowsocks,
 refer to the [Wiki page](https://github.com/shadowsocks/shadowsocks/wiki/Feature-Comparison-across-Different-Versions).
+
+The project is now **shadowsocks-c**. Commands (`ss-local`, `ss-server`, etc.)
+and the `shadowsocks.h` API remain compatible. New builds produce
+`libshadowsocks-c` with CMake/pkg-config package `shadowsocks-c`; legacy library
+filenames and package lookup names remain available as compatibility aliases.
+Existing configuration paths, distro package names and service names are retained.
+Repository links below still point to the current GitHub repository.
 
 ## Quick Start
 
@@ -110,7 +117,7 @@ Use `-DCMAKE_PREFIX_PATH=/opt/homebrew/opt/mbedtls@3` when needed on macOS.
 | `ENABLE_SANITIZERS` | `OFF` | AddressSanitizer and UndefinedBehaviorSanitizer |
 | `ENABLE_CONNMARKTOS` / `ENABLE_NFTABLES` | `OFF` | Optional Linux firewall integrations |
 
-CMake consumers can use `find_package(shadowsocks-libev CONFIG REQUIRED)` and
+CMake consumers can use `find_package(shadowsocks-c CONFIG REQUIRED)` and
 link `shadowsocks::static`, `shadowsocks::shared`, or `shadowsocks::shadowsocks`
 (which prefers the shared library when installed). A pkg-config file is also
 installed. Dependency provenance and update instructions are in

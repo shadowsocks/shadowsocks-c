@@ -1,9 +1,9 @@
-shadowsocks-libev(8)
-====================
+shadowsocks-c(8)
+================
 
 NAME
 ----
-shadowsocks-libev - a lightweight and secure socks5 proxy
+shadowsocks-c - a lightweight and secure socks5 proxy
 
 SYNOPSIS
 --------
@@ -13,12 +13,12 @@ SYNOPSIS
 
 DESCRIPTION
 -----------
-*Shadowsocks-libev* is a lightweight and secure socks5 proxy.
+*shadowsocks-c* is a lightweight and secure socks5 proxy.
 It is a port of the original shadowsocks created by clowwindy.
-*Shadowsocks-libev* is written in pure C and takes advantage of *libev*
+*shadowsocks-c* is written in pure C and takes advantage of *libev*
 to achieve both high performance and low resource consumption.
 
-*Shadowsocks-libev* consists of five components. One is `ss-server`(1)
+*shadowsocks-c* consists of five components. One is `ss-server`(1)
 that runs on a remote server to provide secured tunnel service.
 `ss-local`(1) and `ss-redir`(1) are clients on your local machines to proxy
 traffic(TCP/UDP or both).
@@ -56,7 +56,7 @@ Not available in manager mode.
 -m <encrypt_method>::
 Set the cipher.
 +
-*Shadowsocks-libev* accepts 22 different ciphers:
+*shadowsocks-c* accepts 22 different ciphers:
 +
 2022-blake3-aes-128-gcm, 2022-blake3-aes-256-gcm,
 2022-blake3-chacha20-poly1305,

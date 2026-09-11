@@ -172,10 +172,10 @@ done
 
 # Shared library should be findable by ldconfig
 sudo ldconfig
-if ldconfig -p | grep -q libshadowsocks-libev; then
-    check_pass "libshadowsocks-libev found by ldconfig"
+if ldconfig -p | grep -q libshadowsocks-c; then
+    check_pass "libshadowsocks-c found by ldconfig"
 else
-    check_fail "libshadowsocks-libev not found by ldconfig"
+    check_fail "libshadowsocks-c not found by ldconfig"
 fi
 
 # Header should be in the include path

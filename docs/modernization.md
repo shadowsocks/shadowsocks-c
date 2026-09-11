@@ -59,7 +59,7 @@ SS_BUILD_EXECUTABLES, SS_BUILD_STATIC_LIBRARY and SS_BUILD_SHARED_LIBRARY contro
 outputs independently. Docs and platform shell tools are explicit opt-ins.
 Bundled mode is the default and the `bundled` / `minimal` presets exercise it.
 Maintainers stage the intended source files, then run
-`scripts/source_archive.py build-artifacts/shadowsocks-libev.tar.gz`.
+`scripts/source_archive.py build-artifacts/shadowsocks-c.tar.gz`.
 The archive includes tracked working-tree contents (so uncommitted changes are
 included); record the final commit with a published release and use a clean
 checkout for publishing. No submodules are accepted in the archive.
@@ -197,3 +197,16 @@ resolution remains synchronous before serving traffic. Tests use a local delayed
 DNS server to verify both address families, NXDOMAIN, cancellation, exactly-once
 callbacks, and timer progress while requests wait. Hostname ACL integration uses
 an unreachable proxy upstream so successful transfers prove direct resolution.
+
+## Project name and compatibility
+
+The project is named **shadowsocks-c**. New library outputs are
+`libshadowsocks-c`, and CMake/pkg-config consumers use `shadowsocks-c`.
+`shadowsocks.h`, its ABI version, and all `ss-*` commands remain stable.
+Legacy library filenames are installed as relative symlinks on Unix and copies
+on Windows; `find_package(shadowsocks-libev)` and the old pkg-config name resolve
+to the new library. Private dependency archives and license files install under
+`shadowsocks-c`. Source archives and the main manual use the new name.
+
+Existing configuration paths, Debian package identifiers and service names
+remain compatible. GitHub URLs retain the current repository location.

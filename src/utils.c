@@ -321,7 +321,7 @@ void
 usage()
 {
     printf("\n");
-    printf("shadowsocks-libev %s\n\n", VERSION);
+    printf("shadowsocks-c %s\n\n", VERSION);
     printf(
         "  maintained by Max Lv <max.c.lv@gmail.com> and Linus Yang <laokongzi@gmail.com>\n\n");
     printf("  usage:\n\n");

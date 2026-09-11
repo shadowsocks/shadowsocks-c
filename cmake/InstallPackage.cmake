@@ -24,13 +24,13 @@ if(SS_BUILD_STATIC_LIBRARY)
         string(APPEND SS_PC_PRIVATE " -lsodium -lmbedcrypto -lcares")
         install(FILES cmake/FindMbedTLS.cmake cmake/FindSodium.cmake
             cmake/FindCares.cmake cmake/FindPCRE2.cmake cmake/mbedtls_version_check.c
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-libev/modules)
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-c/modules)
     endif()
     foreach(target IN LISTS private_targets)
         install(FILES $<TARGET_FILE:${target}>
-            DESTINATION ${CMAKE_INSTALL_LIBDIR}/shadowsocks-libev)
-        list(APPEND private_links "\${_ss_libdir}/shadowsocks-libev/$<TARGET_FILE_NAME:${target}>")
-        string(APPEND SS_PC_PRIVATE " \${libdir}/shadowsocks-libev/$<TARGET_FILE_NAME:${target}>")
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/shadowsocks-c)
+        list(APPEND private_links "\${_ss_libdir}/shadowsocks-c/$<TARGET_FILE_NAME:${target}>")
+        string(APPEND SS_PC_PRIVATE " \${libdir}/shadowsocks-c/$<TARGET_FILE_NAME:${target}>")
     endforeach()
     if(SS_DEPENDENCY_MODE STREQUAL "system")
         list(APPEND private_links "\${SS_CONSUMER_UV}")
@@ -52,35 +52,37 @@ if(SS_BUILD_STATIC_LIBRARY)
         string(APPEND SS_PC_PRIVATE " -lrt")
     endif()
     # Resolve libdir relative to this installed config, supporting --prefix relocation.
-    file(RELATIVE_PATH libdir_from_config "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-libev" "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}")
+    file(RELATIVE_PATH libdir_from_config "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-c" "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}")
     string(APPEND private_content "get_filename_component(_ss_libdir \"\${CMAKE_CURRENT_LIST_DIR}/${libdir_from_config}\" ABSOLUTE)\n")
     string(APPEND private_content "set_property(TARGET shadowsocks::static PROPERTY INTERFACE_LINK_LIBRARIES \"${private_links}\")\n")
 endif()
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-private.cmake" CONTENT "${private_content}")
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-private.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-libev)
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-c)
 
-set(SS_STATIC_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}shadowsocks-libev${CMAKE_STATIC_LIBRARY_SUFFIX}")
-set(SS_SHARED_FILENAME "${CMAKE_SHARED_LIBRARY_PREFIX}shadowsocks-libev${CMAKE_SHARED_LIBRARY_SUFFIX}")
-set(SS_SHARED_IMPLIB "${CMAKE_IMPORT_LIBRARY_PREFIX}shadowsocks-libev${CMAKE_IMPORT_LIBRARY_SUFFIX}")
-configure_package_config_file(cmake/shadowsocks-libev-config.cmake.in
-    "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev-config.cmake"
-    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-libev
+set(SS_STATIC_FILENAME "${CMAKE_STATIC_LIBRARY_PREFIX}shadowsocks-c${CMAKE_STATIC_LIBRARY_SUFFIX}")
+set(SS_SHARED_FILENAME "${CMAKE_SHARED_LIBRARY_PREFIX}shadowsocks-c${CMAKE_SHARED_LIBRARY_SUFFIX}")
+set(SS_SHARED_IMPLIB "${CMAKE_IMPORT_LIBRARY_PREFIX}shadowsocks-c${CMAKE_IMPORT_LIBRARY_SUFFIX}")
+configure_package_config_file(cmake/shadowsocks-c-config.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-c-config.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-c
     PATH_VARS CMAKE_INSTALL_LIBDIR CMAKE_INSTALL_BINDIR CMAKE_INSTALL_INCLUDEDIR)
-write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev-config-version.cmake"
+write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-c-config-version.cmake"
     VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev-config.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev-config-version.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-libev)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-c-config.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-c-config-version.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-c)
 file(RELATIVE_PATH SS_PC_PREFIX_RELATIVE "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_INSTALL_LIBDIR}/pkgconfig" "${CMAKE_CURRENT_BINARY_DIR}")
-configure_file(cmake/shadowsocks-libev.pc.cmake "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev.pc.in" @ONLY)
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/shadowsocks-libev.pc"
-    INPUT "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-libev.pc.in")
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/shadowsocks-libev.pc" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+configure_file(cmake/shadowsocks-c.pc.cmake "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-c.pc.in" @ONLY)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/shadowsocks-c.pc"
+    INPUT "${CMAKE_CURRENT_BINARY_DIR}/package/shadowsocks-c.pc.in")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/pkgconfig/shadowsocks-c.pc" DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
 endif()
 
 install(FILES COPYING LICENSE third_party/README.md third_party/manifest.json
-    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/shadowsocks-libev)
-install(FILES third_party/bloom/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/shadowsocks-libev/bloom)
-install(DIRECTORY src/blake3/ DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/shadowsocks-libev/blake3
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/shadowsocks-c)
+install(FILES third_party/bloom/LICENSE DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/shadowsocks-c/bloom)
+install(DIRECTORY src/blake3/ DESTINATION ${CMAKE_INSTALL_DATADIR}/licenses/shadowsocks-c/blake3
     FILES_MATCHING PATTERN "LICENSE*")
+
+include(${PROJECT_SOURCE_DIR}/cmake/LegacyPackage.cmake)

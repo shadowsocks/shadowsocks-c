@@ -16,7 +16,7 @@ import tarfile
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--prefix", default="shadowsocks-libev-3.3.6")
+    parser.add_argument("--prefix", default="shadowsocks-c-3.3.6")
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     if "/" in args.prefix or args.prefix in ("", ".", ".."):

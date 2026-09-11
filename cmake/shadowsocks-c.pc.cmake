@@ -9,5 +9,5 @@ URL: @PROJECT_URL@
 Version: @PROJECT_VERSION@
 Requires:
 Cflags: -I${includedir}
-Libs: -L${libdir} -lshadowsocks-libev
+Libs: -L${libdir} -lshadowsocks-c
 Libs.private: @SS_PC_PRIVATE@

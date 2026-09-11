@@ -29,9 +29,9 @@ Build the scratch runtime image using the same cached build stage:
 
 ```sh
 docker build --platform linux/arm64 -f docker/static/Dockerfile \
-  --target runtime -t shadowsocks-libev:static-arm64 .
+  --target runtime -t shadowsocks-c:static-arm64 .
 docker run --rm -p 8388:8388/tcp -p 8388:8388/udp \
-  shadowsocks-libev:static-arm64 \
+  shadowsocks-c:static-arm64 \
   -s 0.0.0.0 -p 8388 -k example-password -m aes-256-gcm -u
 ```
 

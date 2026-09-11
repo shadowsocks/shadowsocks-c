@@ -4,5 +4,5 @@ debian/config.json usr/share/shadowsocks-libev
 debian/shadowsocks-libev-*.service lib/systemd/system
 usr/bin/
 usr/share/man/
-usr/share/doc/shadowsocks-libev/
-usr/share/licenses/shadowsocks-libev/
+usr/share/doc/shadowsocks-c/
+usr/share/licenses/shadowsocks-c/

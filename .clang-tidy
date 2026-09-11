@@ -1,4 +1,4 @@
-# clang-tidy configuration for shadowsocks-libev project sources (src/ only).
+# clang-tidy configuration for shadowsocks-c project sources (src/ only).
 # Bundled sources under third_party/ and src/blake3/ are third-party code and
 # are excluded by the file regex used in CI:
 #   run-clang-tidy -p build '/src/[^/]+\.c$'

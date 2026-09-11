@@ -2,7 +2,7 @@
 # Backward-compatible maintainer entrypoint for the offline release archive.
 set -euo pipefail
 root=$(git rev-parse --show-toplevel)
-name=shadowsocks-libev
+name=shadowsocks-c
 directory=$root
 while getopts "n:o:" opt; do
     case "$opt" in
