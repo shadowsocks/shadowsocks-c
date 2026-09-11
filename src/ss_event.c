@@ -1,4 +1,5 @@
 #include "ss_event.h"
+#include <uv.h>
 #include "uthash.h"
 #include <assert.h>
 #include <math.h>

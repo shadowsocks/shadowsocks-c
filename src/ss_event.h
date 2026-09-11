@@ -3,7 +3,8 @@
 #ifndef SS_EVENT_H
 #define SS_EVENT_H
 #include <stdint.h>
-#include <uv.h>
+/* Keep platform headers private: Linux TCP headers differ from libc headers. */
+struct uv_loop_s;
 struct ss_loop;
 typedef double ss_tstamp;
 #define SS_READ 1
@@ -36,7 +37,7 @@ typedef struct ss_signal {
 struct ss_loop *ss_default_loop(void);
 struct ss_loop *ss_loop_new(unsigned flags);
 void ss_loop_destroy(struct ss_loop *loop);
-uv_loop_t *ss_native_loop(struct ss_loop *loop);
+struct uv_loop_s *ss_native_loop(struct ss_loop *loop);
 const char *ss_backend_name(void);
 int ss_run(struct ss_loop *loop, int flags);
 void ss_unloop(struct ss_loop *loop, int how);

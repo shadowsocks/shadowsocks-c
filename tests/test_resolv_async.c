@@ -1,5 +1,6 @@
 /* Local delayed DNS server proves A/AAAA/NXDOMAIN completion without blocking. */
 #include "test_helpers.h"
+#include <string.h>
 #include "ss_event.h"
 #include "resolv.h"
 int verbose = 0;

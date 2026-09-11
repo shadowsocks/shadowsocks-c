@@ -1,5 +1,7 @@
 #include "test_helpers.h"
+#include <string.h>
 #include "ss_event.h"
+#include <uv.h>
 #ifdef __APPLE__
 #include <sys/event.h>
 #endif
