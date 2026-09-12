@@ -182,7 +182,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-html
           path: build/coverage-html/
