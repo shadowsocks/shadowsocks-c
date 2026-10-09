@@ -5,11 +5,11 @@
 #include <cstring>
 #include <ctime>
 
-#include <mbedtls/aes.h>
 #include <sodium.h>
 
 #include "blake3/blake3.h"
 #include "crypto/keys.hpp"
+#include "crypto/mbedtls_compat.hpp"
 
 namespace ss::crypto {
 
@@ -111,16 +111,7 @@ std::size_t chunks_cost(std::size_t n) noexcept
 // AES-ECB over the 16-byte separate header, keyed with the PSK.
 Status sep_header(const Psk &psk, std::uint8_t *dst, const std::uint8_t *src, bool encrypt) noexcept
 {
-    mbedtls_aes_context aes;
-    mbedtls_aes_init(&aes);
-    unsigned bits = static_cast<unsigned>(psk.size() * 8);
-    int rc        = encrypt ? mbedtls_aes_setkey_enc(&aes, psk.bytes.data(), bits)
-                            : mbedtls_aes_setkey_dec(&aes, psk.bytes.data(), bits);
-    if (rc == 0) {
-        rc = mbedtls_aes_crypt_ecb(&aes, encrypt ? MBEDTLS_AES_ENCRYPT : MBEDTLS_AES_DECRYPT, src, dst);
-    }
-    mbedtls_aes_free(&aes);
-    if (rc != 0) {
+    if (mbed::aes_ecb(psk.bytes.data(), psk.size(), encrypt, src, dst) != 0) {
         return fail(Errc::crypto);
     }
     return {};

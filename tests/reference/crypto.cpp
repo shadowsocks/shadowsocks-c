@@ -34,7 +34,11 @@
 #include <stdint.h>
 #include <sodium.h>
 #include <mbedtls/version.h>
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+#include <mbedtls/psa_util.h>
+#else
 #include <mbedtls/md5.h>
+#endif
 
 #include "base64.h"
 #include "crypto.h"
@@ -102,7 +106,11 @@ crypto_md5(const unsigned char *d, size_t n, unsigned char *md)
     if (md == NULL) {
         md = m;
     }
-#if MBEDTLS_VERSION_NUMBER < 0x03000000 && MBEDTLS_VERSION_NUMBER >= 0x02070000
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+    size_t len;
+    if (psa_hash_compute(PSA_ALG_MD5, d, n, md, 16, &len) != PSA_SUCCESS)
+        FATAL("Failed to calculate MD5");
+#elif MBEDTLS_VERSION_NUMBER < 0x03000000 && MBEDTLS_VERSION_NUMBER >= 0x02070000
     if (mbedtls_md5_ret(d, n, md) != 0)
         FATAL("Failed to calculate MD5");
 #else
@@ -140,6 +148,12 @@ crypto_init(const char *password, const char *key, const char *method)
     if (sodium_init() == -1) {
         FATAL("Failed to initialize sodium");
     }
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+    // Mbed TLS 4.x does all hashing and encryption through PSA
+    if (psa_crypto_init() != PSA_SUCCESS) {
+        FATAL("Failed to initialize PSA Crypto");
+    }
+#endif
 
     // Initialize NONCE bloom filter
 #ifdef MODULE_REMOTE
@@ -192,7 +206,7 @@ crypto_derive_key(const char *pass, uint8_t *key, size_t key_len)
 
     datal = strlen((const char *)pass);
 
-    const digest_type_t *md = mbedtls_md_info_from_string("MD5");
+    const digest_type_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_MD5);
     if (md == NULL) {
         FATAL("MD5 Digest not found in crypto library");
     }
@@ -226,6 +240,24 @@ crypto_derive_key(const char *pass, uint8_t *key, size_t key_len)
     mbedtls_md_free(&c);
     return key_len;
 }
+
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+/* Mbed TLS 4.x only provides HMAC through PSA, with the key in a key slot */
+static int
+crypto_hmac_import(const mbedtls_md_info_t *md, const unsigned char *key,
+                   size_t key_len, psa_key_id_t *id, psa_algorithm_t *alg)
+{
+    psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+
+    *alg = PSA_ALG_HMAC(mbedtls_md_psa_alg_from_type(mbedtls_md_get_type(md)));
+    psa_set_key_type(&attr, PSA_KEY_TYPE_HMAC);
+    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_SIGN_MESSAGE);
+    psa_set_key_algorithm(&attr, *alg);
+
+    return psa_import_key(&attr, key, key_len, id) == PSA_SUCCESS ? 0 : CRYPTO_ERROR;
+}
+
+#endif
 
 /* HKDF-Extract + HKDF-Expand */
 int
@@ -261,7 +293,32 @@ crypto_hkdf_extract(const mbedtls_md_info_t *md, const unsigned char *salt,
         salt_len = hash_len;
     }
 
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+    psa_key_id_t key;
+    psa_algorithm_t alg;
+    psa_status_t status;
+    size_t prk_len;
+
+    /*
+     * PSA can't import an empty key. HMAC pads the key with zeros, so the
+     * null salt gives the same result.
+     */
+    if (salt_len == 0) {
+        salt     = null_salt;
+        salt_len = hash_len;
+    }
+
+    if (crypto_hmac_import(md, salt, salt_len, &key, &alg) != 0) {
+        return CRYPTO_ERROR;
+    }
+
+    status = psa_mac_compute(key, alg, ikm, ikm_len, prk, hash_len, &prk_len);
+    psa_destroy_key(key);
+
+    return status == PSA_SUCCESS ? 0 : CRYPTO_ERROR;
+#else
     return mbedtls_md_hmac(md, salt, salt_len, ikm, ikm_len, prk);
+#endif
 }
 
 /* HKDF-Expand(PRK, info, L) -> OKM */
@@ -273,7 +330,13 @@ crypto_hkdf_expand(const mbedtls_md_info_t *md, const unsigned char *prk,
     int hash_len;
     int N;
     int T_len = 0, where = 0, i, ret;
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+    psa_key_id_t key;
+    psa_algorithm_t alg;
+    size_t mac_len;
+#else
     mbedtls_md_context_t ctx;
+#endif
     unsigned char T[MBEDTLS_MD_MAX_SIZE];
 
     if (info_len < 0 || okm_len < 0 || okm == NULL) {
@@ -300,6 +363,37 @@ crypto_hkdf_expand(const mbedtls_md_info_t *md, const unsigned char *prk,
         return CRYPTO_ERROR;
     }
 
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+    if (crypto_hmac_import(md, prk, prk_len, &key, &alg) != 0) {
+        return CRYPTO_ERROR;
+    }
+
+    /* Section 2.3. */
+    for (i = 1; i <= N; i++) {
+        psa_mac_operation_t op = PSA_MAC_OPERATION_INIT;
+        unsigned char c        = i;
+
+        ret = psa_mac_sign_setup(&op, key, alg) != PSA_SUCCESS ||
+              psa_mac_update(&op, T, T_len) != PSA_SUCCESS ||
+              psa_mac_update(&op, info, info_len) != PSA_SUCCESS ||
+              /* The constant concatenated to the end of each T(n) is a single
+               * octet. */
+              psa_mac_update(&op, &c, 1) != PSA_SUCCESS ||
+              psa_mac_sign_finish(&op, T, sizeof(T), &mac_len) != PSA_SUCCESS;
+
+        if (ret != 0) {
+            psa_mac_abort(&op);
+            psa_destroy_key(key);
+            return CRYPTO_ERROR;
+        }
+
+        memcpy(okm + where, T, (i != N) ? hash_len : (okm_len - where));
+        where += hash_len;
+        T_len  = hash_len;
+    }
+
+    psa_destroy_key(key);
+#else
     mbedtls_md_init(&ctx);
 
     if ((ret = mbedtls_md_setup(&ctx, md, 1)) != 0) {
@@ -330,9 +424,170 @@ crypto_hkdf_expand(const mbedtls_md_info_t *md, const unsigned char *prk,
     }
 
     mbedtls_md_free(&ctx);
+#endif
 
     return 0;
 }
+
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+static const struct {
+    const char *name;
+    cipher_kt_t kt;
+} psa_cipher_types[] = {
+#ifdef PSA_WANT_KEY_TYPE_AES
+#ifdef PSA_WANT_ALG_GCM
+    { "AES-128-GCM",         { PSA_KEY_TYPE_AES,      128, PSA_ALG_GCM } },
+    { "AES-192-GCM",         { PSA_KEY_TYPE_AES,      192, PSA_ALG_GCM } },
+    { "AES-256-GCM",         { PSA_KEY_TYPE_AES,      256, PSA_ALG_GCM } },
+#endif
+#endif
+};
+
+const cipher_kt_t *
+crypto_cipher_info_from_string(const char *name)
+{
+    size_t i;
+
+    for (i = 0; i < sizeof(psa_cipher_types) / sizeof(psa_cipher_types[0]); i++)
+        if (strcmp(name, psa_cipher_types[i].name) == 0)
+            return &psa_cipher_types[i].kt;
+
+    return NULL;
+}
+
+int
+crypto_cipher_setup(cipher_evp_t *evp, const cipher_kt_t *kt)
+{
+    evp->kt  = kt;
+    evp->key = PSA_KEY_ID_NULL;
+
+    return kt != NULL ? 0 : CRYPTO_ERROR;
+}
+
+int
+crypto_cipher_setkey(cipher_evp_t *evp, const uint8_t *key, size_t key_len,
+                     int enc)
+{
+    psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+
+    (void)enc;
+    psa_destroy_key(evp->key);
+    evp->key = PSA_KEY_ID_NULL;
+
+    psa_set_key_type(&attr, evp->kt->type);
+    psa_set_key_bits(&attr, evp->kt->key_bits);
+    psa_set_key_algorithm(&attr, evp->kt->alg);
+    psa_set_key_usage_flags(&attr, PSA_KEY_USAGE_ENCRYPT | PSA_KEY_USAGE_DECRYPT);
+
+    return psa_import_key(&attr, key, key_len, &evp->key);
+}
+
+int
+crypto_cipher_reset(cipher_evp_t *evp)
+{
+    (void)evp;
+    return 0;
+}
+
+int
+crypto_cipher_auth_encrypt(cipher_evp_t *evp, const uint8_t *n, size_t nlen,
+                           const uint8_t *ad, size_t adlen,
+                           const uint8_t *m, size_t mlen,
+                           uint8_t *c, size_t *clen, size_t tlen)
+{
+    return psa_aead_encrypt(evp->key,
+                            PSA_ALG_AEAD_WITH_SHORTENED_TAG(evp->kt->alg, tlen),
+                            n, nlen, ad, adlen, m, mlen, c, mlen + tlen, clen);
+}
+
+int
+crypto_cipher_auth_decrypt(cipher_evp_t *evp, const uint8_t *n, size_t nlen,
+                           const uint8_t *ad, size_t adlen,
+                           const uint8_t *c, size_t clen,
+                           uint8_t *p, size_t *plen, size_t tlen)
+{
+    if (clen < tlen)
+        return CRYPTO_ERROR;
+
+    return psa_aead_decrypt(evp->key,
+                            PSA_ALG_AEAD_WITH_SHORTENED_TAG(evp->kt->alg, tlen),
+                            n, nlen, ad, adlen, c, clen, p, clen - tlen, plen);
+}
+
+void
+crypto_cipher_free(cipher_evp_t *evp)
+{
+    psa_destroy_key(evp->key);
+    evp->key = PSA_KEY_ID_NULL;
+}
+
+#else
+
+const cipher_kt_t *
+crypto_cipher_info_from_string(const char *name)
+{
+    return mbedtls_cipher_info_from_string(name);
+}
+
+int
+crypto_cipher_setup(cipher_evp_t *evp, const cipher_kt_t *kt)
+{
+    mbedtls_cipher_init(evp);
+    return mbedtls_cipher_setup(evp, kt);
+}
+
+int
+crypto_cipher_setkey(cipher_evp_t *evp, const uint8_t *key, size_t key_len,
+                     int enc)
+{
+    return mbedtls_cipher_setkey(evp, key, (int)key_len * 8, (mbedtls_operation_t)enc);
+}
+
+int
+crypto_cipher_reset(cipher_evp_t *evp)
+{
+    return mbedtls_cipher_reset(evp);
+}
+
+int
+crypto_cipher_auth_encrypt(cipher_evp_t *evp, const uint8_t *n, size_t nlen,
+                           const uint8_t *ad, size_t adlen,
+                           const uint8_t *m, size_t mlen,
+                           uint8_t *c, size_t *clen, size_t tlen)
+{
+#if MBEDTLS_VERSION_NUMBER < 0x03000000
+    int err = mbedtls_cipher_auth_encrypt(evp, n, nlen, ad, adlen,
+                                          m, mlen, c, clen, c + mlen, tlen);
+    *clen += tlen;
+    return err;
+#else
+    return mbedtls_cipher_auth_encrypt_ext(evp, n, nlen, ad, adlen,
+                                           m, mlen, c, mlen + tlen, clen, tlen);
+#endif
+}
+
+int
+crypto_cipher_auth_decrypt(cipher_evp_t *evp, const uint8_t *n, size_t nlen,
+                           const uint8_t *ad, size_t adlen,
+                           const uint8_t *c, size_t clen,
+                           uint8_t *p, size_t *plen, size_t tlen)
+{
+#if MBEDTLS_VERSION_NUMBER < 0x03000000
+    return mbedtls_cipher_auth_decrypt(evp, n, nlen, ad, adlen,
+                                       c, clen - tlen, p, plen, c + clen - tlen, tlen);
+#else
+    return mbedtls_cipher_auth_decrypt_ext(evp, n, nlen, ad, adlen,
+                                           c, clen, p, clen - tlen, plen, tlen);
+#endif
+}
+
+void
+crypto_cipher_free(cipher_evp_t *evp)
+{
+    mbedtls_cipher_free(evp);
+}
+
+#endif
 
 /*
  * Report an unusable key and exit, after showing a freshly generated one of

@@ -4,6 +4,7 @@
 #   MBEDTLS_FOUND
 #   MBEDTLS_INCLUDE_DIRS
 #   MBEDTLS_CRYPTO_LIBRARY
+#   MBEDTLS_CRYPTO_LIBRARY_NAME (tfpsacrypto for Mbed TLS 4.x, else mbedcrypto)
 #   MBEDTLS_TLS_LIBRARY
 #
 # The headers and the libraries MUST come from the same installation. Mixing
@@ -16,7 +17,10 @@
 
 include(CheckCSourceCompiles)
 
-# This codebase targets the mbedTLS 3.x API, so prefer a 3.x installation.
+# Mbed TLS 4.x moved the crypto library to TF-PSA-Crypto (libtfpsacrypto)
+# and made mbedtls/cipher.h private, so look for mbedtls/version.h, which all
+# versions install. Keep preferring the keg-only 3.x on Homebrew, which has
+# been tested longer.
 set(_MBEDTLS_PREFIX_HINTS
     ${MbedTLS_ROOT}
     ${CMAKE_PREFIX_PATH}
@@ -33,9 +37,9 @@ set(_MBEDTLS_PREFIX_HINTS
 # two can never be drawn from different installations.
 if(NOT CMAKE_CROSSCOMPILING)
 foreach(_prefix IN LISTS _MBEDTLS_PREFIX_HINTS)
-    if(EXISTS "${_prefix}/include/mbedtls/cipher.h")
+    if(EXISTS "${_prefix}/include/mbedtls/version.h")
         find_library(_MBEDTLS_CRYPTO_IN_PREFIX
-            NAMES mbedcrypto
+            NAMES tfpsacrypto mbedcrypto
             PATHS "${_prefix}/lib" "${_prefix}/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
             NO_DEFAULT_PATH
         )
@@ -51,12 +55,12 @@ endif()
 if(_MBEDTLS_ROOT)
     # Pin every component to the prefix chosen above.
     find_path(MBEDTLS_INCLUDE_DIR
-        NAMES mbedtls/cipher.h
+        NAMES mbedtls/version.h
         PATHS "${_MBEDTLS_ROOT}/include"
         NO_DEFAULT_PATH
     )
     find_library(MBEDTLS_CRYPTO_LIBRARY
-        NAMES mbedcrypto
+        NAMES tfpsacrypto mbedcrypto
         PATHS "${_MBEDTLS_ROOT}/lib" "${_MBEDTLS_ROOT}/lib/${CMAKE_LIBRARY_ARCHITECTURE}"
         NO_DEFAULT_PATH
     )
@@ -67,8 +71,8 @@ if(_MBEDTLS_ROOT)
     )
 else()
     # No single prefix provided both; fall back to a plain search.
-    find_path(MBEDTLS_INCLUDE_DIR NAMES mbedtls/cipher.h)
-    find_library(MBEDTLS_CRYPTO_LIBRARY NAMES mbedcrypto)
+    find_path(MBEDTLS_INCLUDE_DIR NAMES mbedtls/version.h)
+    find_library(MBEDTLS_CRYPTO_LIBRARY NAMES tfpsacrypto mbedcrypto)
     find_library(MBEDTLS_TLS_LIBRARY NAMES mbedtls)
 endif()
 
@@ -85,8 +89,13 @@ if(MBEDTLS_INCLUDE_DIR AND MBEDTLS_CRYPTO_LIBRARY)
     file(STRINGS "${_mbedtls_version_header}" _mbedtls_version_line
         REGEX "^#define MBEDTLS_VERSION_STRING +\"[0-9.]+\"")
     string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" MBEDTLS_VERSION "${_mbedtls_version_line}")
-    if(NOT MBEDTLS_VERSION OR MBEDTLS_VERSION VERSION_LESS 2 OR NOT MBEDTLS_VERSION VERSION_LESS 4)
-        message(FATAL_ERROR "Supported system Mbed TLS versions are 2.x and 3.x; found ${MBEDTLS_VERSION}")
+    if(NOT MBEDTLS_VERSION OR MBEDTLS_VERSION VERSION_LESS 2 OR NOT MBEDTLS_VERSION VERSION_LESS 5)
+        message(FATAL_ERROR "Supported system Mbed TLS versions are 2.x, 3.x and 4.x; found ${MBEDTLS_VERSION}")
+    endif()
+    if(MBEDTLS_VERSION VERSION_LESS 4)
+        set(MBEDTLS_CRYPTO_LIBRARY_NAME mbedcrypto)
+    else()
+        set(MBEDTLS_CRYPTO_LIBRARY_NAME tfpsacrypto)
     endif()
 
     set(CMAKE_REQUIRED_INCLUDES ${MBEDTLS_INCLUDE_DIR})

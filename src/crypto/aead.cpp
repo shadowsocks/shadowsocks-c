@@ -5,8 +5,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include <mbedtls/sha1.h>
-
 #include "crypto/keys.hpp"
 #include "ppbloom.h"
 
@@ -52,12 +50,12 @@ public:
             opad_[i] = block[i] ^ 0x5c;
         }
         sodium_memzero(block.data(), block.size());
-        mbedtls_sha1_init(&inner_);
+        mbed::sha1_init(&inner_);
         ok_ = mbed::sha1_starts(&inner_) == 0 && mbed::sha1_update(&inner_, ipad_.data(), kBlock) == 0;
     }
     ~HmacSha1()
     {
-        mbedtls_sha1_free(&inner_);
+        mbed::sha1_free(&inner_);
         sodium_memzero(ipad_.data(), ipad_.size());
         sodium_memzero(opad_.data(), opad_.size());
     }
@@ -73,17 +71,17 @@ public:
     {
         std::uint8_t inner_hash[kSize];
         ok_ = ok_ && mbed::sha1_finish(&inner_, inner_hash) == 0;
-        mbedtls_sha1_context outer;
-        mbedtls_sha1_init(&outer);
+        mbed::sha1_context outer;
+        mbed::sha1_init(&outer);
         ok_ = ok_ && mbed::sha1_starts(&outer) == 0 && mbed::sha1_update(&outer, opad_.data(), kBlock) == 0
               && mbed::sha1_update(&outer, inner_hash, kSize) == 0 && mbed::sha1_finish(&outer, mac) == 0;
-        mbedtls_sha1_free(&outer);
+        mbed::sha1_free(&outer);
         sodium_memzero(inner_hash, sizeof(inner_hash));
         return ok_;
     }
 
 private:
-    mbedtls_sha1_context inner_;
+    mbed::sha1_context inner_;
     std::array<std::uint8_t, kBlock> ipad_;
     std::array<std::uint8_t, kBlock> opad_;
     bool ok_ = false;
@@ -210,9 +208,8 @@ Status AeadEngine::init(const AeadSpec &spec, std::span<const std::uint8_t> subk
             return fail(Errc::crypto);
         }
     } else if (is_gcm(spec.kind)) {
-        auto &gcm = impl_.emplace<MbedGcm>();
-        if (mbedtls_gcm_setkey(&gcm.ctx, MBEDTLS_CIPHER_ID_AES, subkey.data(),
-                               static_cast<unsigned>(subkey.size() * 8)) != 0) {
+        auto &gcm = impl_.emplace<mbed::Gcm>();
+        if (gcm.setkey(subkey.data(), subkey.size()) != 0) {
             return fail(Errc::crypto);
         }
     } else {
@@ -234,9 +231,8 @@ Status AeadEngine::seal(std::uint8_t *out, std::span<const std::uint8_t> plainte
         unsigned long long clen = 0;
         rc = crypto_aead_aes256gcm_encrypt_afternm(out, &clen, plaintext.data(), plaintext.size(), nullptr, 0,
                                                    nullptr, nonce, &aes->state);
-    } else if (auto *gcm = std::get_if<MbedGcm>(&impl_)) {
-        rc = mbedtls_gcm_crypt_and_tag(&gcm->ctx, MBEDTLS_GCM_ENCRYPT, plaintext.size(), nonce, spec_.nonce_len,
-                                       nullptr, 0, plaintext.data(), out, spec_.tag_len, out + plaintext.size());
+    } else if (auto *gcm = std::get_if<mbed::Gcm>(&impl_)) {
+        rc = gcm->seal(out, plaintext.data(), plaintext.size(), nonce, spec_.nonce_len);
     } else if (auto *chacha = std::get_if<SodiumChacha>(&impl_)) {
         unsigned long long clen = 0;
         if (spec_.kind == AeadKind::xchacha20_poly1305) {
@@ -264,9 +260,8 @@ Status AeadEngine::open(std::uint8_t *out, std::span<const std::uint8_t> ciphert
         unsigned long long plen = 0;
         rc = crypto_aead_aes256gcm_decrypt_afternm(out, &plen, nullptr, ciphertext.data(), ciphertext.size(), nullptr,
                                                    0, nonce, &aes->state);
-    } else if (auto *gcm = std::get_if<MbedGcm>(&impl_)) {
-        rc = mbedtls_gcm_auth_decrypt(&gcm->ctx, mlen, nonce, spec_.nonce_len, nullptr, 0,
-                                      ciphertext.data() + mlen, spec_.tag_len, ciphertext.data(), out);
+    } else if (auto *gcm = std::get_if<mbed::Gcm>(&impl_)) {
+        rc = gcm->open(out, ciphertext.data(), mlen, nonce, spec_.nonce_len);
     } else if (auto *chacha = std::get_if<SodiumChacha>(&impl_)) {
         unsigned long long plen = 0;
         if (spec_.kind == AeadKind::xchacha20_poly1305) {

@@ -178,8 +178,9 @@ IPv4/IPv6 CIDRs, `full:example.com` for exact domains, and
 case and respect label boundaries. Unsupported regex rules are rejected.
 
 Distribution packages can use `-DSS_DEPENDENCY_MODE=system -DWITH_STATIC=OFF`
-with libuv, c-ares, libsodium, Mbed TLS 3.x, and PCRE2 development packages.
-Use `-DCMAKE_PREFIX_PATH=/opt/homebrew/opt/mbedtls@3` when needed on macOS.
+with libuv, c-ares, libsodium, Mbed TLS (2.x, 3.x or 4.x), and PCRE2
+development packages. Use `-DCMAKE_PREFIX_PATH=/opt/homebrew/opt/mbedtls@3`
+when needed on macOS.
 
 | Option | Default | Purpose |
 |---|---|---|
@@ -338,7 +339,7 @@ The OpenWRT project is maintained here:
 
 Use the bundled CMake instructions above with Xcode Command Line Tools and
 CMake. The bundled executables require no Homebrew runtime libraries.
-For system mode, use Mbed TLS 3 and point `CMAKE_PREFIX_PATH` at its prefix.
+For system mode, use Mbed TLS 3 or 4 and point `CMAKE_PREFIX_PATH` at its prefix.
 
 ### Windows (MinGW)
 

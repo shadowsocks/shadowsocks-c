@@ -21,7 +21,7 @@ if(SS_BUILD_STATIC_LIBRARY)
         endif()
         list(APPEND private_links "\${SODIUM_LIBRARY}" "\${MBEDTLS_CRYPTO_LIBRARY}"
             "\${CARES_LIBRARY}"  )
-        string(APPEND SS_PC_PRIVATE " -lsodium -lmbedcrypto -lcares")
+        string(APPEND SS_PC_PRIVATE " -lsodium -l${MBEDTLS_CRYPTO_LIBRARY_NAME} -lcares")
         install(FILES cmake/FindMbedTLS.cmake cmake/FindSodium.cmake
             cmake/FindCares.cmake cmake/FindPCRE2.cmake cmake/mbedtls_version_check.c
             DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/shadowsocks-c/modules)

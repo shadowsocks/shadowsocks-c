@@ -35,7 +35,10 @@
 #include <time.h>
 
 #include <sodium.h>
+#include <mbedtls/version.h>
+#if MBEDTLS_VERSION_NUMBER < 0x04000000
 #include <mbedtls/aes.h>
+#endif
 
 #include "aead.h"
 #include "aead_internal.h"
@@ -242,6 +245,24 @@ is_chacha(const cipher_t *cipher)
 static int
 sep_hdr_crypt(const cipher_t *cipher, uint8_t *dst, const uint8_t *src, int enc)
 {
+#if MBEDTLS_VERSION_NUMBER >= 0x04000000
+    psa_key_attributes_t attr = PSA_KEY_ATTRIBUTES_INIT;
+    psa_key_id_t key;
+    psa_status_t status;
+    size_t len;
+
+    psa_set_key_type(&attr, PSA_KEY_TYPE_AES);
+    psa_set_key_algorithm(&attr, PSA_ALG_ECB_NO_PADDING);
+    psa_set_key_usage_flags(&attr, enc ? PSA_KEY_USAGE_ENCRYPT : PSA_KEY_USAGE_DECRYPT);
+    if (psa_import_key(&attr, cipher->key, cipher->key_len, &key) != PSA_SUCCESS)
+        return CRYPTO_ERROR;
+    if (enc)
+        status = psa_cipher_encrypt(key, PSA_ALG_ECB_NO_PADDING, src, 16, dst, 16, &len);
+    else
+        status = psa_cipher_decrypt(key, PSA_ALG_ECB_NO_PADDING, src, 16, dst, 16, &len);
+    psa_destroy_key(key);
+    return status == PSA_SUCCESS ? CRYPTO_OK : CRYPTO_ERROR;
+#else
     mbedtls_aes_context aes;
     int err;
 
@@ -259,6 +280,7 @@ sep_hdr_crypt(const cipher_t *cipher, uint8_t *dst, const uint8_t *src, int enc)
                                     src, dst);
     mbedtls_aes_free(&aes);
     return err == 0 ? CRYPTO_OK : CRYPTO_ERROR;
+#endif
 }
 
 /*
@@ -289,13 +311,11 @@ body_seal(const cipher_t *cipher, const uint8_t *key,
     /* Reuse the shared one-shot helper with an mbedTLS GCM context. */
     tmp_ctx.evp = (cipher_evp_t *)ss_malloc(sizeof(cipher_evp_t));
     memset(tmp_ctx.evp, 0, sizeof(cipher_evp_t));
-    mbedtls_cipher_init(tmp_ctx.evp);
-    const cipher_kt_t *kt = mbedtls_cipher_info_from_string(
+    const cipher_kt_t *kt = crypto_cipher_info_from_string(
         cipher->key_len == 16 ? "AES-128-GCM" : "AES-256-GCM");
-    if (kt == NULL || mbedtls_cipher_setup(tmp_ctx.evp, kt) != 0
-        || mbedtls_cipher_setkey(tmp_ctx.evp, key,
-                                 (int)cipher->key_len * 8, MBEDTLS_ENCRYPT) != 0) {
-        mbedtls_cipher_free(tmp_ctx.evp);
+    if (kt == NULL || crypto_cipher_setup(tmp_ctx.evp, kt) != 0
+        || crypto_cipher_setkey(tmp_ctx.evp, key, cipher->key_len, 1) != 0) {
+        crypto_cipher_free(tmp_ctx.evp);
         ss_free(tmp_ctx.evp);
         return CRYPTO_ERROR;
     }
@@ -304,7 +324,7 @@ body_seal(const cipher_t *cipher, const uint8_t *key,
     err   = aead_cipher_encrypt(&tmp_ctx, c, clen, (uint8_t *)m, mlen,
                                 NULL, 0, (uint8_t *)nonce, (uint8_t *)key);
 
-    mbedtls_cipher_free(tmp_ctx.evp);
+    crypto_cipher_free(tmp_ctx.evp);
     ss_free(tmp_ctx.evp);
     return err == 0 ? CRYPTO_OK : CRYPTO_ERROR;
 }
@@ -331,13 +351,11 @@ body_open(const cipher_t *cipher, const uint8_t *key,
 
     tmp_ctx.evp = (cipher_evp_t *)ss_malloc(sizeof(cipher_evp_t));
     memset(tmp_ctx.evp, 0, sizeof(cipher_evp_t));
-    mbedtls_cipher_init(tmp_ctx.evp);
-    const cipher_kt_t *kt = mbedtls_cipher_info_from_string(
+    const cipher_kt_t *kt = crypto_cipher_info_from_string(
         cipher->key_len == 16 ? "AES-128-GCM" : "AES-256-GCM");
-    if (kt == NULL || mbedtls_cipher_setup(tmp_ctx.evp, kt) != 0
-        || mbedtls_cipher_setkey(tmp_ctx.evp, key,
-                                 (int)cipher->key_len * 8, MBEDTLS_DECRYPT) != 0) {
-        mbedtls_cipher_free(tmp_ctx.evp);
+    if (kt == NULL || crypto_cipher_setup(tmp_ctx.evp, kt) != 0
+        || crypto_cipher_setkey(tmp_ctx.evp, key, cipher->key_len, 0) != 0) {
+        crypto_cipher_free(tmp_ctx.evp);
         ss_free(tmp_ctx.evp);
         return CRYPTO_ERROR;
     }
@@ -346,7 +364,7 @@ body_open(const cipher_t *cipher, const uint8_t *key,
     err   = aead_cipher_decrypt(&tmp_ctx, p, plen, (uint8_t *)c, clen,
                                 NULL, 0, (uint8_t *)nonce, (uint8_t *)key);
 
-    mbedtls_cipher_free(tmp_ctx.evp);
+    crypto_cipher_free(tmp_ctx.evp);
     ss_free(tmp_ctx.evp);
     return err == 0 ? CRYPTO_OK : CRYPTO_ERROR;
 }
