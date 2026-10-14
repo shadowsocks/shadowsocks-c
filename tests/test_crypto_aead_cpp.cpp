@@ -2,6 +2,7 @@
 // The C++ AEAD codecs (src/crypto/aead.hpp) against RFC 5869 vectors and,
 // differentially, against the C implementation in aead.cpp: every stream
 // and packet produced by one side must be accepted by the other.
+#include <algorithm>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
