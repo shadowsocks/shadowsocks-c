@@ -713,7 +713,10 @@ Flow Connection::socks_route() noexcept
                     known = ss_inet_ntop(direct.ss_family, raw, ip, sizeof(ip)) != nullptr;
                 }
             } else {
-                std::strncpy(ip, target_.host, sizeof(ip) - 1);
+                // A literal address: it fits, but copy at most sizeof(ip) - 1 bytes.
+                std::size_t n = strnlen(target_.host, sizeof(ip) - 1);
+                std::memcpy(ip, target_.host, n);
+                ip[n] = '\0';
                 direct      = target_.ip;
                 have_direct = true;
                 known       = true;
