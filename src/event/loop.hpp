@@ -62,7 +62,7 @@ public:
 
     Status init() noexcept
     {
-        if (initialised_) {
+        if (initialised_ || native_ != &loop_) {
             return fail(Errc::invalid);
         }
         int rc = uv_loop_init(&loop_);
@@ -73,19 +73,30 @@ public:
         return {};
     }
 
+    // Use a loop owned by someone else (the ss_event default loop while C
+    // modules still run on it). The loop is neither run nor closed here.
+    Status adopt(uv_loop_t *loop) noexcept
+    {
+        if (initialised_ || loop == nullptr) {
+            return fail(Errc::invalid);
+        }
+        native_ = loop;
+        return {};
+    }
+
     // Run until stop() or until nothing is left to do.
-    void run() noexcept { uv_run(&loop_, UV_RUN_DEFAULT); }
+    void run() noexcept { uv_run(native_, UV_RUN_DEFAULT); }
     // Poll once without blocking.
-    void run_nowait() noexcept { uv_run(&loop_, UV_RUN_NOWAIT); }
+    void run_nowait() noexcept { uv_run(native_, UV_RUN_NOWAIT); }
     // Block for one round of events.
-    void run_once() noexcept { uv_run(&loop_, UV_RUN_ONCE); }
-    void stop() noexcept { uv_stop(&loop_); }
+    void run_once() noexcept { uv_run(native_, UV_RUN_ONCE); }
+    void stop() noexcept { uv_stop(native_); }
 
     // Cached loop time in milliseconds.
-    std::uint64_t now() const noexcept { return uv_now(&loop_); }
-    void update_time() noexcept { uv_update_time(&loop_); }
+    std::uint64_t now() const noexcept { return uv_now(native_); }
+    void update_time() noexcept { uv_update_time(native_); }
 
-    uv_loop_t *native() noexcept { return &loop_; }
+    uv_loop_t *native() noexcept { return native_; }
 
     // Let pending close callbacks run and release the loop. Fails, leaving
     // the loop usable, while handles are still open.
@@ -104,7 +115,8 @@ public:
 
 private:
     uv_loop_t loop_{};
-    bool initialised_ = false;
+    uv_loop_t *native_ = &loop_;
+    bool initialised_  = false;
 };
 
 // Collects the asynchronous closes of one owner's handles and invokes a
@@ -241,13 +253,16 @@ public:
     int interest() const noexcept { return interest_; }
     ss_socket_t fd() const noexcept { return fd_; }
     bool is_open() const noexcept { return live; }
+    bool is_closing() const noexcept { return group != nullptr; }
 
-    // Stop polling and close; the socket is closed once libuv lets go.
-    void close(CloseGroup &closer) noexcept
+    // Stop polling and close; the socket is closed once libuv lets go,
+    // unless someone else (c-ares) owns it.
+    void close(CloseGroup &closer, bool close_socket = true) noexcept
     {
         if (!live || group != nullptr) {
             return;
         }
+        close_socket_ = close_socket;
         group = &closer;
         closer.enter();
         uv_close(as_handle(), &Poll::on_closed);
@@ -267,16 +282,19 @@ private:
     static void on_closed(uv_handle_t *h) noexcept
     {
         auto *self = static_cast<Poll *>(h->data);
-        ss_socket_close(self->fd_);
+        if (self->close_socket_) {
+            ss_socket_close(self->fd_);
+        }
         self->live           = false;
         CloseGroup *closer   = self->group;
         self->group          = nullptr;
         closer->leave(); // may destroy self
     }
 
-    Owner *owner_   = nullptr;
-    ss_socket_t fd_ = 0;
-    int interest_   = 0;
+    Owner *owner_      = nullptr;
+    ss_socket_t fd_    = 0;
+    int interest_      = 0;
+    bool close_socket_ = true;
 };
 
 template <class Owner, void (Owner::*OnFire)()>

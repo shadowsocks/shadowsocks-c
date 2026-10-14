@@ -263,7 +263,7 @@ ss_add_test(test_process
 set_tests_properties(test_process PROPERTIES TIMEOUT 20)
 
 ss_add_test(test_resolv
-    "test_resolv.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_resolv.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/relay/resolver.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_ev;ss_cares;ss_sodium")
 set_tests_properties(test_resolv PROPERTIES TIMEOUT 20)
 
@@ -278,7 +278,7 @@ ss_add_test(test_acl_literal
 ss_add_test(test_event "test_event.c" "ss_ev")
 set_tests_properties(test_event PROPERTIES TIMEOUT 30)
 ss_add_test(test_resolv_async
-    "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/relay/resolver.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_ev;ss_cares;ss_sodium")
 set_tests_properties(test_resolv_async PROPERTIES TIMEOUT 30)
 

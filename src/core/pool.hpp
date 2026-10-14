@@ -161,6 +161,16 @@ public:
         return PoolPtr<T>(object, PoolDeleter<T>{ this });
     }
 
+    // Re-own an object whose PoolPtr was release()d, e.g. to hand a raw
+    // pointer to a C library callback and take it back afterwards.
+    PoolPtr<T> adopt(T *object) noexcept
+    {
+        if (meta_at(index_of(object))->state != State::live) {
+            std::abort();
+        }
+        return PoolPtr<T>(object, PoolDeleter<T>{ this });
+    }
+
     // Handle for a live object owned by this pool.
     Handle<T> handle_of(const T *object) const noexcept
     {

@@ -14,7 +14,6 @@ src/manager.cpp 14
 src/plugin.cpp 3
 src/process.cpp 26
 src/redir.cpp 15
-src/resolv.cpp 6
 src/rule.cpp 2
 src/server.cpp 17
 src/ss_event.cpp 5
