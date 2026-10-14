@@ -10,10 +10,11 @@
 #include <sodium.h>
 
 #include "alloc_audit/alloc_probe.hpp"
-#include "crypto.h"
 #include "crypto/stream.hpp"
-#include "ppbloom.h"
 #include "test_helpers.hpp"
+
+#include "crypto.h"
+#include "ppbloom.h"
 #include "utils.h"
 
 #undef min
