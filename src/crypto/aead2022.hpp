@@ -122,11 +122,14 @@ public:
         std::size_t produced;
     };
 
-    // Like AeadTcpDecryptor::decrypt; `out` must hold at least k2022MaxChunk
-    // bytes. A server's first output is the SOCKS target address followed by
-    // the initial payload, with the padding removed.
+    // Take up to accept_limit() bytes of `in`, decrypt complete chunks in
+    // place and copy as much plaintext as fits into `out` (any size). Call
+    // again with an empty input to collect the rest. A server's first
+    // output is the SOCKS target address followed by the initial payload,
+    // with the padding removed.
     Result<Step> decrypt(std::span<const std::uint8_t> in, std::span<std::uint8_t> out) noexcept;
 
+    std::size_t accept_limit() const noexcept { return buffer_.capacity() - buffer_.size(); }
     bool header_received() const noexcept { return stage_ != Stage::fixed; }
     std::span<const std::uint8_t> salt() const noexcept { return { salt_.data(), psk_.size() }; }
     std::size_t pending() const noexcept { return buffer_.size(); }
@@ -143,8 +146,10 @@ private:
     std::array<std::uint8_t, kMaxNonce> nonce_{};
     // The largest unit is a full 64 KiB chunk plus its tag.
     FixedBuffer<k2022MaxChunk + kTag + 64> buffer_;
-    std::size_t want_ = 0; // plaintext length of the next variable/payload chunk
-    Stage stage_      = Stage::fixed;
+    std::size_t want_  = 0; // plaintext length of the next variable/payload chunk
+    std::size_t plain_ = 0; // decrypted bytes at the front of buffer_ not yet handed out
+    std::size_t skip_  = 0; // bytes after them to drop (tag, padding) once they are
+    Stage stage_       = Stage::fixed;
     bool failed_      = false;
 };
 

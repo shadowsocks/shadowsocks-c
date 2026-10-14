@@ -354,6 +354,15 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
                     --self --printable-salt --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
         set_tests_properties(test_printable_salt_interop PROPERTIES
             LABELS "integration" TIMEOUT 90)
+        # ss-tunnel through the C relay engine against ss-server (and
+        # shadowsocks-rust when installed), every method.
+        set(SS_TUNNEL_INTEROP_ARGS --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+        if(SS_ENABLE_LEGACY)
+            list(APPEND SS_TUNNEL_INTEROP_ARGS --legacy)
+        endif()
+        add_test(NAME test_tunnel_interop
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tunnel_interop.py ${SS_TUNNEL_INTEROP_ARGS})
+        set_tests_properties(test_tunnel_interop PROPERTIES LABELS "integration" TIMEOUT 300)
     endif()
 endif()
 

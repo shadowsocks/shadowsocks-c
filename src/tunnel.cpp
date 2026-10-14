@@ -52,8 +52,17 @@
 #include "netutils.h"
 #include "utils.h"
 #include "plugin.h"
-#include "tunnel.h"
+#include "ss_event.h"
+#include "crypto.h"
+#include "jconf.h"
+#include "common.h"
+#include "udprelay.h"
 #include "ss_windows.h"
+
+#include "relay/tcp.hpp"
+
+#undef min
+#undef max
 
 #ifndef EAGAIN
 #define EAGAIN EWOULDBLOCK
@@ -62,20 +71,6 @@
 #ifndef EWOULDBLOCK
 #define EWOULDBLOCK EAGAIN
 #endif
-
-static void accept_cb(SS_P_ ss_io *w, int revents);
-static void server_recv_cb(SS_P_ ss_io *w, int revents);
-static void server_send_cb(SS_P_ ss_io *w, int revents);
-static void remote_recv_cb(SS_P_ ss_io *w, int revents);
-static void remote_send_cb(SS_P_ ss_io *w, int revents);
-
-static remote_t *new_remote(int fd, int timeout);
-static server_t *new_server(int fd);
-
-static void free_remote(remote_t *remote);
-static void close_and_free_remote(SS_P_ remote_t *remote);
-static void free_server(server_t *server);
-static void close_and_free_server(SS_P_ server_t *server);
 
 static int
 validate_tunnel_addr(const ss_addr_t *addr)
@@ -132,19 +127,6 @@ static struct plugin_watcher_t {
     uint16_t port;
     int valid;
 } plugin_watcher;
-#endif
-
-#ifndef __MINGW32__
-static int
-setnonblocking(int fd)
-{
-    int flags;
-    if (-1 == (flags = fcntl(fd, F_GETFL, 0))) {
-        flags = 0;
-    }
-    return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-}
-
 #endif
 
 int
@@ -212,667 +194,6 @@ create_and_bind(const char *addr, const char *port)
     freeaddrinfo(result);
 
     return listen_sock;
-}
-
-static void
-server_recv_cb(SS_P_ ss_io *w, int revents)
-{
-    server_ctx_t *server_recv_ctx = (server_ctx_t *)w;
-    server_t *server              = server_recv_ctx->server;
-    remote_t *remote              = server->remote;
-
-    if (remote == NULL) {
-        close_and_free_server(SS_A_ server);
-        return;
-    }
-
-    ssize_t r = recv(server->fd, remote->buf->data, SOCKET_BUF_SIZE, 0);
-
-    if (r == 0) {
-        // connection closed
-        close_and_free_remote(SS_A_ remote);
-        close_and_free_server(SS_A_ server);
-        return;
-    } else if (r == -1) {
-        if (ss_socket_error() == EAGAIN || ss_socket_error() == EWOULDBLOCK) {
-            // no data
-            // continue to wait for recv
-            return;
-        } else {
-            ERROR("server recv");
-            close_and_free_remote(SS_A_ remote);
-            close_and_free_server(SS_A_ server);
-            return;
-        }
-    }
-
-    remote->buf->len = r;
-
-    int err = crypto->encrypt(remote->buf, server->e_ctx, SOCKET_BUF_SIZE);
-
-    if (err) {
-        LOGE("invalid password or cipher");
-        close_and_free_remote(SS_A_ remote);
-        close_and_free_server(SS_A_ server);
-        return;
-    }
-
-    int s = send(remote->fd, remote->buf->data, remote->buf->len, 0);
-
-    if (s == -1) {
-        if (ss_socket_error() == EAGAIN || ss_socket_error() == EWOULDBLOCK) {
-            // no data, wait for send
-            remote->buf->idx = 0;
-            ss_io_stop(SS_A_ & server_recv_ctx->io);
-            ss_io_start(SS_A_ & remote->send_ctx->io);
-            return;
-        } else {
-            ERROR("send");
-            close_and_free_remote(SS_A_ remote);
-            close_and_free_server(SS_A_ server);
-            return;
-        }
-    } else if (s < remote->buf->len) {
-        remote->buf->len -= s;
-        remote->buf->idx  = s;
-        ss_io_stop(SS_A_ & server_recv_ctx->io);
-        ss_io_start(SS_A_ & remote->send_ctx->io);
-        return;
-    }
-}
-
-static void
-server_send_cb(SS_P_ ss_io *w, int revents)
-{
-    server_ctx_t *server_send_ctx = (server_ctx_t *)w;
-    server_t *server              = server_send_ctx->server;
-    remote_t *remote              = server->remote;
-    if (server->buf->len == 0) {
-        // close and free
-        close_and_free_remote(SS_A_ remote);
-        close_and_free_server(SS_A_ server);
-        return;
-    } else {
-        // has data to send
-        ssize_t s = send(server->fd, server->buf->data + server->buf->idx,
-                         server->buf->len, 0);
-        if (s == -1) {
-            if (ss_socket_error() != EAGAIN && ss_socket_error() != EWOULDBLOCK) {
-                ERROR("send");
-                close_and_free_remote(SS_A_ remote);
-                close_and_free_server(SS_A_ server);
-            }
-            return;
-        } else if (s < server->buf->len) {
-            // partly sent, move memory, wait for the next time to send
-            server->buf->len -= s;
-            server->buf->idx += s;
-            return;
-        } else {
-            // all sent out, wait for reading
-            server->buf->len = 0;
-            server->buf->idx = 0;
-            ss_io_stop(SS_A_ & server_send_ctx->io);
-            if (remote != NULL) {
-                ss_io_start(SS_A_ & remote->recv_ctx->io);
-            } else {
-                close_and_free_remote(SS_A_ remote);
-                close_and_free_server(SS_A_ server);
-                return;
-            }
-        }
-    }
-}
-
-static void
-remote_timeout_cb(SS_P_ ss_timer *watcher, int revents)
-{
-    remote_ctx_t *remote_ctx
-        = ss_container_of(watcher, remote_ctx_t, watcher);
-
-    remote_t *remote = remote_ctx->remote;
-    server_t *server = remote->server;
-
-    if (verbose) {
-        LOGI("TCP connection timeout");
-    }
-
-    ss_timer_stop(SS_A_ watcher);
-
-    close_and_free_remote(SS_A_ remote);
-    close_and_free_server(SS_A_ server);
-}
-
-static void
-remote_recv_cb(SS_P_ ss_io *w, int revents)
-{
-    remote_ctx_t *remote_recv_ctx = (remote_ctx_t *)w;
-    remote_t *remote              = remote_recv_ctx->remote;
-    server_t *server              = remote->server;
-
-    ssize_t r = recv(remote->fd, server->buf->data, SOCKET_BUF_SIZE, 0);
-
-    if (r == 0) {
-        // connection closed
-        close_and_free_remote(SS_A_ remote);
-        close_and_free_server(SS_A_ server);
-        return;
-    } else if (r == -1) {
-        if (ss_socket_error() == EAGAIN || ss_socket_error() == EWOULDBLOCK) {
-            // no data
-            // continue to wait for recv
-            return;
-        } else {
-            ERROR("remote recv");
-            close_and_free_remote(SS_A_ remote);
-            close_and_free_server(SS_A_ server);
-            return;
-        }
-    }
-
-    server->buf->len = r;
-
-    int err = crypto->decrypt(server->buf, server->d_ctx, SOCKET_BUF_SIZE);
-    if (err == CRYPTO_ERROR) {
-        LOGE("invalid password or cipher");
-        close_and_free_remote(SS_A_ remote);
-        close_and_free_server(SS_A_ server);
-        return;
-    } else if (err == CRYPTO_NEED_MORE) {
-        return; // Wait for more
-    }
-
-    int s = send(server->fd, server->buf->data, server->buf->len, 0);
-
-    if (s == -1) {
-        if (ss_socket_error() == EAGAIN || ss_socket_error() == EWOULDBLOCK) {
-            // no data, wait for send
-            server->buf->idx = 0;
-            ss_io_stop(SS_A_ & remote_recv_ctx->io);
-            ss_io_start(SS_A_ & server->send_ctx->io);
-        } else {
-            ERROR("send");
-            close_and_free_remote(SS_A_ remote);
-            close_and_free_server(SS_A_ server);
-            return;
-        }
-    } else if (s < server->buf->len) {
-        server->buf->len -= s;
-        server->buf->idx  = s;
-        ss_io_stop(SS_A_ & remote_recv_ctx->io);
-        ss_io_start(SS_A_ & server->send_ctx->io);
-    }
-
-    // Disable TCP_NODELAY after the first response are sent
-    if (!remote->recv_ctx->connected && !no_delay) {
-        int opt = 0;
-        ss_setsockopt(server->fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-        ss_setsockopt(remote->fd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-    }
-    remote->recv_ctx->connected = 1;
-}
-
-static void
-remote_send_cb(SS_P_ ss_io *w, int revents)
-{
-    remote_ctx_t *remote_send_ctx = (remote_ctx_t *)w;
-    remote_t *remote              = remote_send_ctx->remote;
-    server_t *server              = remote->server;
-
-    ss_timer_stop(SS_A_ & remote_send_ctx->watcher);
-
-    if (!remote_send_ctx->connected) {
-        int r = 0;
-
-        if (remote->addr == NULL) {
-            struct sockaddr_storage addr;
-            socklen_t len = sizeof(struct sockaddr_storage);
-            r = getpeername(remote->fd, (struct sockaddr *)&addr, &len);
-        }
-
-        if (r == 0) {
-            remote_send_ctx->connected = 1;
-
-            if (remote->buf->len != 0) {
-                LOGE("unexpected pending tunnel data");
-                close_and_free_remote(SS_A_ remote);
-                close_and_free_server(SS_A_ server);
-                return;
-            }
-            buffer_t *abuf = remote->buf;
-
-            ss_addr_t *sa = &server->destaddr;
-            struct ss_ip ip;
-            if (ss_ip_init(&ip, sa->host) != -1) {
-                if (ip.version == 4) {
-                    // send as IPv4
-                    struct in_addr host;
-                    memset(&host, 0, sizeof(struct in_addr));
-                    int host_len = sizeof(struct in_addr);
-
-                    if (inet_pton(AF_INET, sa->host, &host) == -1) {
-                        FATAL("IP parser error");
-                    }
-                    abuf->data[abuf->len++] = 1;
-                    memcpy(abuf->data + abuf->len, &host, host_len);
-                    abuf->len += host_len;
-                } else if (ip.version == 6) {
-                    // send as IPv6
-                    struct in6_addr host;
-                    memset(&host, 0, sizeof(struct in6_addr));
-                    int host_len = sizeof(struct in6_addr);
-
-                    if (inet_pton(AF_INET6, sa->host, &host) == -1) {
-                        FATAL("IP parser error");
-                    }
-                    abuf->data[abuf->len++] = 4;
-                    memcpy(abuf->data + abuf->len, &host, host_len);
-                    abuf->len += host_len;
-                } else {
-                    FATAL("IP parser error");
-                }
-            } else {
-                // send as domain
-                int host_len = strlen(sa->host);
-
-                if (host_len > UINT8_MAX) {
-                    LOGE("tunnel host name is too long");
-                    close_and_free_remote(SS_A_ remote);
-                    close_and_free_server(SS_A_ server);
-                    return;
-                }
-                abuf->data[abuf->len++] = 3;
-                abuf->data[abuf->len++] = host_len;
-                memcpy(abuf->data + abuf->len, sa->host, host_len);
-                abuf->len += host_len;
-            }
-
-            uint16_t port_num;
-            if (ss_parse_uint16_port(sa->port, &port_num) == -1) {
-                LOGE("invalid tunnel port");
-                close_and_free_remote(SS_A_ remote);
-                close_and_free_server(SS_A_ server);
-                return;
-            }
-            uint16_t port = htons(port_num);
-            memcpy(abuf->data + abuf->len, &port, 2);
-            abuf->len += 2;
-
-            int err = crypto->encrypt(abuf, server->e_ctx, SOCKET_BUF_SIZE);
-
-            if (err) {
-                LOGE("invalid password or cipher");
-                close_and_free_remote(SS_A_ remote);
-                close_and_free_server(SS_A_ server);
-                return;
-            }
-
-            ss_io_start(SS_A_ & remote->recv_ctx->io);
-        } else {
-            ERROR("getpeername");
-            // not connected
-            close_and_free_remote(SS_A_ remote);
-            close_and_free_server(SS_A_ server);
-            return;
-        }
-    }
-
-    if (remote->buf->len == 0) {
-        // close and free
-        close_and_free_remote(SS_A_ remote);
-        close_and_free_server(SS_A_ server);
-        return;
-    } else {
-        // has data to send
-        ssize_t s = -1;
-        if (remote->addr != NULL) {
-#if defined(TCP_FASTOPEN_WINSOCK)
-            DWORD s   = -1;
-            DWORD err = 0;
-            do {
-                int optval = 1;
-                // Set fast open option
-                if (ss_setsockopt(remote->fd, IPPROTO_TCP, TCP_FASTOPEN,
-                               &optval, sizeof(optval)) != 0) {
-                    ERROR("setsockopt");
-                    break;
-                }
-                // Load ConnectEx function
-                LPFN_CONNECTEX ConnectEx = winsock_getconnectex();
-                if (ConnectEx == NULL) {
-                    LOGE("Cannot load ConnectEx() function");
-                    err = WSAENOPROTOOPT;
-                    break;
-                }
-                // ConnectEx requires a bound socket
-                if (winsock_dummybind(remote->fd,
-                                      (struct sockaddr *)&(remote->addr)) != 0) {
-                    ERROR("bind");
-                    break;
-                }
-                // Call ConnectEx to send data
-                memset(&remote->olap, 0, sizeof(remote->olap));
-                remote->connect_ex_done = 0;
-                if (ConnectEx(remote->fd, (const struct sockaddr *)&(remote->addr),
-                              get_sockaddr_len(remote->addr), remote->buf->data, remote->buf->len,
-                              &s, &remote->olap)) {
-                    remote->connect_ex_done = 1;
-                    break;
-                }
-                // XXX: ConnectEx pending, check later in remote_send
-                if (WSAGetLastError() == ERROR_IO_PENDING) {
-                    err = CONNECT_IN_PROGRESS;
-                    break;
-                }
-                ERROR("ConnectEx");
-            } while (0);
-            // Set error number
-            if (err) {
-                SetLastError(err);
-            }
-#elif defined(CONNECT_DATA_IDEMPOTENT)
-            ((struct sockaddr_in *)&(remote->addr))->sin_len = sizeof(struct sockaddr_in);
-            sa_endpoints_t endpoints;
-            memset((char *)&endpoints, 0, sizeof(endpoints));
-            endpoints.sae_dstaddr    = (struct sockaddr *)&(remote->addr);
-            endpoints.sae_dstaddrlen = get_sockaddr_len(remote->addr);
-            s                        = connectx(remote->fd, &endpoints, SAE_ASSOCID_ANY,
-                                                CONNECT_RESUME_ON_READ_WRITE | CONNECT_DATA_IDEMPOTENT,
-                                                NULL, 0, NULL, NULL);
-#elif defined(TCP_FASTOPEN_CONNECT)
-            int optval = 1;
-            if (ss_setsockopt(remote->fd, IPPROTO_TCP, TCP_FASTOPEN_CONNECT,
-                           (void *)&optval, sizeof(optval)) < 0)
-                FATAL("failed to set TCP_FASTOPEN_CONNECT");
-            s = connect(remote->fd, remote->addr, get_sockaddr_len(remote->addr));
-            if (s == 0)
-                s = send(remote->fd, remote->buf->data, remote->buf->len, 0);
-#elif defined(MSG_FASTOPEN)
-            s = sendto(remote->fd, remote->buf->data + remote->buf->idx,
-                       remote->buf->len, MSG_FASTOPEN, remote->addr,
-                       get_sockaddr_len(remote->addr));
-#else
-            FATAL("tcp fast open is not supported on this platform");
-#endif
-
-            remote->addr = NULL;
-
-            if (s == -1) {
-                if (ss_socket_error() == CONNECT_IN_PROGRESS) {
-                    ss_io_start(SS_A_ & remote_send_ctx->io);
-                    ss_timer_start(SS_A_ & remote_send_ctx->watcher);
-                } else {
-                    fast_open = 0;
-                    if (ss_socket_error() == EOPNOTSUPP || ss_socket_error() == EPROTONOSUPPORT ||
-                        ss_socket_error() == ENOPROTOOPT) {
-                        LOGE("fast open is not supported on this platform");
-                    } else {
-                        ERROR("fast_open_connect");
-                    }
-                    close_and_free_remote(SS_A_ remote);
-                    close_and_free_server(SS_A_ server);
-                }
-                return;
-            }
-        } else {
-            s = send(remote->fd, remote->buf->data + remote->buf->idx,
-                     remote->buf->len, 0);
-        }
-
-        if (s == -1) {
-            if (ss_socket_error() != EAGAIN && ss_socket_error() != EWOULDBLOCK) {
-                ERROR("send");
-                // close and free
-                close_and_free_remote(SS_A_ remote);
-                close_and_free_server(SS_A_ server);
-            }
-            return;
-        } else if (s < remote->buf->len) {
-            // partly sent, move memory, wait for the next time to send
-            remote->buf->len -= s;
-            remote->buf->idx += s;
-            return;
-        } else {
-            // all sent out, wait for reading
-            remote->buf->len = 0;
-            remote->buf->idx = 0;
-            ss_io_stop(SS_A_ & remote_send_ctx->io);
-            ss_io_start(SS_A_ & server->recv_ctx->io);
-        }
-    }
-}
-
-static remote_t *
-new_remote(int fd, int timeout)
-{
-    remote_t *remote = (remote_t *)ss_malloc(sizeof(remote_t));
-    memset(remote, 0, sizeof(remote_t));
-
-    remote->recv_ctx = (struct remote_ctx *)ss_malloc(sizeof(remote_ctx_t));
-    remote->send_ctx = (struct remote_ctx *)ss_malloc(sizeof(remote_ctx_t));
-    remote->buf      = (buffer_t *)ss_malloc(sizeof(buffer_t));
-    balloc(remote->buf, SOCKET_BUF_SIZE);
-    memset(remote->recv_ctx, 0, sizeof(remote_ctx_t));
-    memset(remote->send_ctx, 0, sizeof(remote_ctx_t));
-    remote->fd                  = fd;
-    remote->recv_ctx->remote    = remote;
-    remote->recv_ctx->connected = 0;
-    remote->send_ctx->remote    = remote;
-    remote->send_ctx->connected = 0;
-
-    ss_io_init(&remote->recv_ctx->io, remote_recv_cb, fd, SS_READ);
-    ss_io_init(&remote->send_ctx->io, remote_send_cb, fd, SS_WRITE);
-    ss_timer_init(&remote->send_ctx->watcher, remote_timeout_cb,
-                  min(MAX_CONNECT_TIMEOUT, timeout), 0);
-
-    return remote;
-}
-
-static void
-free_remote(remote_t *remote)
-{
-    if (remote->server != NULL) {
-        remote->server->remote = NULL;
-    }
-    if (remote->buf != NULL) {
-        bfree(remote->buf);
-        ss_free(remote->buf);
-    }
-    ss_free(remote->recv_ctx);
-    ss_free(remote->send_ctx);
-    ss_free(remote);
-}
-
-static void
-close_and_free_remote(SS_P_ remote_t *remote)
-{
-    if (remote != NULL) {
-        ss_timer_stop(SS_A_ & remote->send_ctx->watcher);
-        ss_io_stop(SS_A_ & remote->send_ctx->io);
-        ss_io_stop(SS_A_ & remote->recv_ctx->io);
-        ss_socket_close(remote->fd);
-        free_remote(remote);
-    }
-}
-
-static server_t *
-new_server(int fd)
-{
-    server_t *server = (server_t *)ss_malloc(sizeof(server_t));
-    memset(server, 0, sizeof(server_t));
-
-    server->recv_ctx = (struct server_ctx *)ss_malloc(sizeof(server_ctx_t));
-    server->send_ctx = (struct server_ctx *)ss_malloc(sizeof(server_ctx_t));
-    server->buf      = (buffer_t *)ss_malloc(sizeof(buffer_t));
-    balloc(server->buf, SOCKET_BUF_SIZE);
-    memset(server->recv_ctx, 0, sizeof(server_ctx_t));
-    memset(server->send_ctx, 0, sizeof(server_ctx_t));
-    server->fd                  = fd;
-    server->recv_ctx->server    = server;
-    server->recv_ctx->connected = 0;
-    server->send_ctx->server    = server;
-    server->send_ctx->connected = 0;
-
-    server->e_ctx = (cipher_ctx_t *)ss_malloc(sizeof(cipher_ctx_t));
-    server->d_ctx = (cipher_ctx_t *)ss_malloc(sizeof(cipher_ctx_t));
-    crypto->ctx_init(crypto->cipher, server->e_ctx, 1);
-    crypto->ctx_init(crypto->cipher, server->d_ctx, 0);
-    cipher_ctx_pair(server->e_ctx, server->d_ctx);
-
-    ss_io_init(&server->recv_ctx->io, server_recv_cb, fd, SS_READ);
-    ss_io_init(&server->send_ctx->io, server_send_cb, fd, SS_WRITE);
-
-    return server;
-}
-
-static void
-free_server(server_t *server)
-{
-    if (server->remote != NULL) {
-        // NOLINTNEXTLINE(clang-analyzer-unix.Malloc): back-pointers are cleared symmetrically on free
-        server->remote->server = NULL;
-    }
-    if (server->e_ctx != NULL) {
-        crypto->ctx_release(server->e_ctx);
-        ss_free(server->e_ctx);
-    }
-    if (server->d_ctx != NULL) {
-        crypto->ctx_release(server->d_ctx);
-        ss_free(server->d_ctx);
-    }
-    if (server->buf != NULL) {
-        bfree(server->buf);
-        ss_free(server->buf);
-    }
-    ss_free(server->recv_ctx);
-    ss_free(server->send_ctx);
-    ss_free(server);
-}
-
-static void
-close_and_free_server(SS_P_ server_t *server)
-{
-    if (server != NULL) {
-        ss_io_stop(SS_A_ & server->send_ctx->io);
-        ss_io_stop(SS_A_ & server->recv_ctx->io);
-        ss_socket_close(server->fd);
-        free_server(server);
-    }
-}
-
-static void
-accept_cb(SS_P_ ss_io *w, int revents)
-{
-    struct listen_ctx *listener = (struct listen_ctx *)w;
-    int serverfd                = ss_accept(listener->fd, NULL, NULL);
-    if (serverfd == -1) {
-        ERROR("accept");
-        return;
-    }
-    setnonblocking(serverfd);
-    int opt = 1;
-    ss_setsockopt(serverfd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-#ifdef SO_NOSIGPIPE
-    ss_setsockopt(serverfd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
-#endif
-
-    int index                    = (int)randombytes_uniform((uint32_t)listener->remote_num);
-    struct sockaddr *remote_addr = listener->remote_addr[index];
-
-    int protocol = IPPROTO_TCP;
-    if (listener->mptcp < 0) {
-        protocol = IPPROTO_MPTCP; // Enable upstream MPTCP
-    }
-    int remotefd = ss_socket(remote_addr->sa_family, SOCK_STREAM, protocol);
-    if (remotefd == -1) {
-        ERROR("socket");
-        return;
-    }
-
-#ifdef __ANDROID__
-    if (vpn) {
-        int not_protect = 0;
-        if (remote_addr->sa_family == AF_INET) {
-            struct sockaddr_in *s = (struct sockaddr_in *)remote_addr;
-            if (s->sin_addr.s_addr == inet_addr("127.0.0.1"))
-                not_protect = 1;
-        }
-        if (!not_protect) {
-            if (protect_socket(remotefd) == -1) {
-                ERROR("protect_socket");
-                ss_socket_close(remotefd);
-                return;
-            }
-        }
-    }
-#endif
-
-    int keepAlive = 1;
-    ss_setsockopt(remotefd, SOL_SOCKET, SO_KEEPALIVE, (void *)&keepAlive, sizeof(keepAlive));
-    ss_setsockopt(remotefd, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-#ifdef SO_NOSIGPIPE
-    ss_setsockopt(remotefd, SOL_SOCKET, SO_NOSIGPIPE, &opt, sizeof(opt));
-#endif
-
-    // Enable out-of-tree MPTCP
-    if (listener->mptcp > 1) {
-        int err = ss_setsockopt(remotefd, SOL_TCP, listener->mptcp, &opt, sizeof(opt));
-        if (err == -1) {
-            ERROR("failed to enable out-of-tree multipath TCP");
-        }
-    } else if (listener->mptcp == 1) {
-        int i = 0;
-        while ((listener->mptcp = mptcp_enabled_values[i]) > 0) {
-            int err = ss_setsockopt(remotefd, SOL_TCP, listener->mptcp, &opt, sizeof(opt));
-            if (err != -1) {
-                break;
-            }
-            i++;
-        }
-        if (listener->mptcp == 0) {
-            ERROR("failed to enable out-of-tree multipath TCP");
-        }
-    }
-
-    if (tcp_outgoing_sndbuf > 0) {
-        ss_setsockopt(remotefd, SOL_SOCKET, SO_SNDBUF, &tcp_outgoing_sndbuf, sizeof(int));
-    }
-
-    if (tcp_outgoing_rcvbuf > 0) {
-        ss_setsockopt(remotefd, SOL_SOCKET, SO_RCVBUF, &tcp_outgoing_rcvbuf, sizeof(int));
-    }
-
-    // Setup
-    setnonblocking(remotefd);
-#ifdef SET_INTERFACE
-    if (listener->iface) {
-        if (setinterface(remotefd, listener->iface) == -1)
-            ERROR("setinterface");
-    }
-#endif
-
-    server_t *server = new_server(serverfd);
-    remote_t *remote = new_remote(remotefd, listener->timeout);
-    server->destaddr = listener->tunnel_addr;
-    server->remote   = remote;
-    remote->server   = server;
-
-    if (fast_open) {
-        remote->addr = remote_addr;
-    } else {
-        int r = connect(remotefd, remote_addr, get_sockaddr_len(remote_addr));
-
-        if (r == -1 && ss_socket_error() != CONNECT_IN_PROGRESS) {
-            ERROR("connect");
-            close_and_free_remote(SS_A_ remote);
-            close_and_free_server(SS_A_ server);
-            return;
-        }
-    }
-
-    // listen to remote connected event
-    ss_io_start(SS_A_ & remote->send_ctx->io);
-    ss_timer_start(SS_A_ & remote->send_ctx->watcher);
 }
 
 static void
@@ -1617,12 +938,9 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         FATAL("failed to initialize ciphers");
 
     // Setup proxy context
-    struct listen_ctx listen_ctx;
-    memset(&listen_ctx, 0, sizeof(struct listen_ctx));
-    listen_ctx.tunnel_addr = tunnel_addr;
-    listen_ctx.remote_num  = remote_num;
-    listen_ctx.remote_addr = (struct sockaddr **)ss_malloc(sizeof(struct sockaddr *) * remote_num);
-    memset(listen_ctx.remote_addr, 0, sizeof(struct sockaddr *) * remote_num);
+    int remote_count = 0;
+    struct sockaddr_storage remote_storage[MAX_REMOTE_NUM];
+    memset(remote_storage, 0, sizeof(remote_storage));
     for (i = 0; i < remote_num; i++) {
         char *host = remote_addr[i].host;
         char *port = remote_addr[i].port == NULL ? remote_port : remote_addr[i].port;
@@ -1630,25 +948,58 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
             host = plugin_host;
             port = plugin_port;
         }
-        struct sockaddr_storage *storage = (struct sockaddr_storage *)ss_malloc(sizeof(struct sockaddr_storage));
-        memset(storage, 0, sizeof(struct sockaddr_storage));
-        if (get_sockaddr(host, port, storage, 1, ipv6first) == -1) {
+        if (get_sockaddr(host, port, &remote_storage[i], 1, ipv6first) == -1) {
             FATAL("failed to resolve the provided hostname");
         }
-        listen_ctx.remote_addr[i] = (struct sockaddr *)storage;
+        remote_count++;
 
         if (plugin != NULL)
             break;
     }
-    listen_ctx.timeout = timeout_secs;
-    listen_ctx.iface   = iface;
-    listen_ctx.mptcp   = mptcp;
+
+    ss::relay::TcpConfig tcp_config;
+    tcp_config.kind              = ss::relay::Kind::tunnel;
+    tcp_config.remotes           = { remote_storage, (size_t)remote_count };
+    tcp_config.timeout_secs      = timeout_secs;
+    tcp_config.max_connections   = DEFAULT_MAX_CONNECTIONS;
+    tcp_config.fast_open         = fast_open != 0;
+    tcp_config.no_delay          = no_delay != 0;
+    tcp_config.upstream.sndbuf   = tcp_outgoing_sndbuf;
+    tcp_config.upstream.rcvbuf   = tcp_outgoing_rcvbuf;
+    tcp_config.upstream.mptcp    = mptcp;
+    tcp_config.upstream.iface    = iface;
+    tcp_config.upstream.keepalive = true;
+#ifdef __ANDROID__
+    tcp_config.vpn              = vpn != 0;
+    tcp_config.upstream.protect = protect_socket;
+#endif
+    {
+        uint16_t tunnel_port = 0;
+        ss_parse_uint16_port(tunnel_addr.port, &tunnel_port);
+        tcp_config.tunnel_target_len = ss::relay::encode_socks_host(tunnel_addr.host, tunnel_port,
+                                                                     tcp_config.tunnel_target.data());
+        if (tcp_config.tunnel_target_len == 0) {
+            FATAL("tunnel host name is too long");
+        }
+    }
 
     LOGI("listening at %s:%s", local_addr, local_port);
 
     struct ss_loop *loop = SS_DEFAULT;
+    ss::event::Loop tcp_loop;
+    ss::relay::Method tcp_method;
+    ss::relay::TcpRelay tcp_relay;
+    if (!tcp_loop.adopt(ss_native_loop(loop))) {
+        FATAL("failed to set up the event loop");
+    }
 
     if (mode != UDP_ONLY) {
+        if (!tcp_method.init(method, password, key, ss::crypto::Role::client)) {
+            FATAL("failed to initialize ciphers");
+        }
+        if (!tcp_relay.init(tcp_loop, tcp_method, tcp_config, NULL)) {
+            FATAL("failed to set up the TCP relay");
+        }
         // Setup socket
         int listenfd;
         listenfd = create_and_bind(local_addr, local_port);
@@ -1658,12 +1009,9 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         if (listen(listenfd, SOMAXCONN) == -1) {
             FATAL("listen() error");
         }
-        setnonblocking(listenfd);
-
-        listen_ctx.fd = listenfd;
-
-        ss_io_init(&listen_ctx.io, accept_cb, listenfd, SS_READ);
-        ss_io_start(loop, &listen_ctx.io);
+        if (!tcp_relay.listen(listenfd)) {
+            FATAL("failed to watch the listening socket");
+        }
     }
 
     // Setup UDP
@@ -1678,7 +1026,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         }
         struct sockaddr *addr = (struct sockaddr *)storage;
         if (init_udprelay(local_addr, local_port, addr, get_sockaddr_len(addr),
-                          tunnel_addr, mtu, crypto, listen_ctx.timeout, iface) == -1) {
+                          tunnel_addr, mtu, crypto, timeout_secs, iface) == -1) {
             FATAL("failed to initialize UDP relay");
         }
     }
@@ -1704,9 +1052,10 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         stop_plugin();
     }
 
-    for (i = 0; i < remote_num; i++)
-        ss_free(listen_ctx.remote_addr[i]);
-    ss_free(listen_ctx.remote_addr);
+    tcp_relay.shutdown();
+    while (!tcp_relay.closed()) {
+        tcp_loop.run_nowait();
+    }
 
 #ifdef __MINGW32__
     if (plugin_watcher.valid) {

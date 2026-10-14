@@ -1,0 +1,188 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include "relay/codec.hpp"
+
+#include <algorithm>
+#include <cstring>
+
+#include "crypto.h"
+
+// crypto.h defines min/max macros for the C sources.
+#undef min
+#undef max
+
+namespace ss::relay {
+
+Status Method::init(const char *method, const char *password, const char *key, Role role) noexcept
+{
+    if (method == nullptr) {
+        return fail(Errc::config);
+    }
+    role_ = role;
+    if (auto spec = crypto::find_aead2022(method)) {
+        // The password field may carry the base64 PSK too.
+        SS_TRY_ASSIGN(psk, crypto::Psk::from_base64(*spec, key != nullptr ? key : password));
+        key_ = psk;
+        return {};
+    }
+    if (auto spec = crypto::find_aead(method)) {
+        if (key != nullptr) {
+            SS_TRY_ASSIGN(master, crypto::MasterKey::from_base64(*spec, key));
+            key_ = master;
+        } else {
+            SS_TRY_ASSIGN(master, crypto::MasterKey::from_password(*spec, password));
+            key_ = master;
+        }
+        return {};
+    }
+#if SS_ENABLE_LEGACY
+    if (auto spec = crypto::find_stream(method)) {
+        if (key != nullptr) {
+            crypto::StreamKey stream{ *spec, {} };
+            if (crypto_parse_key(key, stream.bytes.data(), spec->key_len) != spec->key_len) {
+                return fail(Errc::config);
+            }
+            key_ = stream;
+        } else {
+            SS_TRY_ASSIGN(stream, crypto::StreamKey::from_password(*spec, password));
+            key_ = stream;
+        }
+        return {};
+    }
+#endif
+    return fail(Errc::config);
+}
+
+Status Encoder::init(Method &method, bool plain, const Decoder *peer, bool printable_salt) noexcept
+{
+    if (plain) {
+        impl_.emplace<Plain>();
+        return {};
+    }
+    const crypto::ReplayFilter filter = crypto::ReplayFilter::ppbloom();
+    if (auto *master = std::get_if<crypto::MasterKey>(&method.key_)) {
+        return impl_.emplace<crypto::AeadTcpEncryptor>().init(*master, filter, printable_salt);
+    }
+    if (auto *psk = std::get_if<crypto::Psk>(&method.key_)) {
+        const crypto::Aead2022TcpDecryptor *request = peer != nullptr ? peer->as_2022() : nullptr;
+        return impl_.emplace<crypto::Aead2022TcpEncryptor>().init(*psk, method.role_, request);
+    }
+#if SS_ENABLE_LEGACY
+    if (auto *stream = std::get_if<crypto::StreamKey>(&method.key_)) {
+        return impl_.emplace<crypto::StreamTcpEncryptor>().init(*stream, filter);
+    }
+#endif
+    return fail(Errc::config);
+}
+
+// Explicit dispatch: std::visit can report bad_variant_access through the
+// C++ runtime, which the programs do not link.
+#if SS_ENABLE_LEGACY
+#define SS_STREAM_CASE(E, expr)                                     \
+    if (auto *e = std::get_if<crypto::Stream##E>(&impl_)) {         \
+        return expr;                                                \
+    }
+#else
+#define SS_STREAM_CASE(E, expr)
+#endif
+
+std::size_t Encoder::sealed_size(std::size_t plaintext_len) const noexcept
+{
+    if (auto *e = std::get_if<crypto::AeadTcpEncryptor>(&impl_)) {
+        return e->sealed_size(plaintext_len);
+    }
+    if (auto *e = std::get_if<crypto::Aead2022TcpEncryptor>(&impl_)) {
+        return e->sealed_size(plaintext_len);
+    }
+    SS_STREAM_CASE(TcpEncryptor, e->sealed_size(plaintext_len))
+    return plaintext_len;
+}
+
+Result<std::size_t> Encoder::seal(std::span<const std::uint8_t> plaintext, std::span<std::uint8_t> out) noexcept
+{
+    if (auto *e = std::get_if<crypto::AeadTcpEncryptor>(&impl_)) {
+        return e->seal(plaintext, out);
+    }
+    if (auto *e = std::get_if<crypto::Aead2022TcpEncryptor>(&impl_)) {
+        return e->seal(plaintext, out);
+    }
+    SS_STREAM_CASE(TcpEncryptor, e->seal(plaintext, out))
+    if (out.size() < plaintext.size()) {
+        return fail(Errc::invalid);
+    }
+    if (!plaintext.empty()) {
+        std::memcpy(out.data(), plaintext.data(), plaintext.size());
+    }
+    return plaintext.size();
+}
+
+std::span<const std::uint8_t> Encoder::salt_2022() const noexcept
+{
+    if (auto *e = std::get_if<crypto::Aead2022TcpEncryptor>(&impl_)) {
+        return e->salt();
+    }
+    return {};
+}
+
+Status Decoder::init(Method &method, bool plain, const Encoder *peer) noexcept
+{
+    if (plain) {
+        impl_.emplace<Plain>();
+        return {};
+    }
+    const crypto::ReplayFilter filter = crypto::ReplayFilter::ppbloom();
+    if (auto *master = std::get_if<crypto::MasterKey>(&method.key_)) {
+        return impl_.emplace<crypto::AeadTcpDecryptor>().init(*master, filter);
+    }
+    if (auto *psk = std::get_if<crypto::Psk>(&method.key_)) {
+        if (method.role_ == Role::client) {
+            if (peer == nullptr) {
+                return fail(Errc::invalid);
+            }
+            return impl_.emplace<crypto::Aead2022TcpDecryptor>().init(*psk, Role::client, peer->salt_2022());
+        }
+        return impl_.emplace<crypto::Aead2022TcpDecryptor>().init(*psk, Role::server, {}, &method.salt_pool_);
+    }
+#if SS_ENABLE_LEGACY
+    if (auto *stream = std::get_if<crypto::StreamKey>(&method.key_)) {
+        return impl_.emplace<crypto::StreamTcpDecryptor>().init(*stream, filter);
+    }
+#endif
+    return fail(Errc::config);
+}
+
+std::size_t Decoder::accept_limit() const noexcept
+{
+    if (auto *d = std::get_if<crypto::AeadTcpDecryptor>(&impl_)) {
+        return d->accept_limit();
+    }
+    if (auto *d = std::get_if<crypto::Aead2022TcpDecryptor>(&impl_)) {
+        return d->accept_limit();
+    }
+    return SIZE_MAX; // plain and stream decode as much as there is room for
+}
+
+Result<Decoder::Step> Decoder::decrypt(std::span<const std::uint8_t> in, std::span<std::uint8_t> out) noexcept
+{
+    auto convert = [](auto step) -> Result<Step> {
+        if (!step) {
+            return fail(step.error());
+        }
+        return Step{ step->consumed, step->produced };
+    };
+    if (auto *d = std::get_if<crypto::AeadTcpDecryptor>(&impl_)) {
+        return convert(d->decrypt(in, out));
+    }
+    if (auto *d = std::get_if<crypto::Aead2022TcpDecryptor>(&impl_)) {
+        return convert(d->decrypt(in, out));
+    }
+    SS_STREAM_CASE(TcpDecryptor, convert(e->decrypt(in, out)))
+    std::size_t n = std::min(in.size(), out.size());
+    if (n != 0) {
+        std::memcpy(out.data(), in.data(), n);
+    }
+    return Step{ n, n };
+}
+
+#undef SS_STREAM_CASE
+
+} // namespace ss::relay

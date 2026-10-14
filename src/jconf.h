@@ -33,6 +33,8 @@ extern "C" {
 #define MAX_CONNECT_TIMEOUT 10
 #define MIN_TCP_IDLE_TIMEOUT (24 * 3600)
 #define MIN_UDP_TIMEOUT 10
+/* Connections a TCP relay serves at once; more are refused. */
+#define DEFAULT_MAX_CONNECTIONS 1024
 
 #define DSCP_EF      0x2E
 #define DSCP_MIN     0x0

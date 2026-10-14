@@ -368,6 +368,8 @@ Status Aead2022TcpDecryptor::init(const Psk &psk, Role role, std::span<const std
     stage_  = Stage::fixed;
     failed_ = false;
     want_   = 0;
+    plain_  = 0;
+    skip_   = 0;
     nonce_.fill(0);
     request_salt_.fill(0);
     if (!request_salt.empty()) {
@@ -384,9 +386,6 @@ Result<Aead2022TcpDecryptor::Step> Aead2022TcpDecryptor::decrypt(std::span<const
     if (failed_) {
         return fail(Errc::closed);
     }
-    if (out.size() < k2022MaxChunk) {
-        return fail(Errc::invalid);
-    }
     Step step{ 0, 0 };
     if (buffer_.writable().size() < in.size()) {
         buffer_.compact();
@@ -399,14 +398,17 @@ Result<Aead2022TcpDecryptor::Step> Aead2022TcpDecryptor::decrypt(std::span<const
     }
     auto bytes = [this]() {
         auto r = buffer_.readable();
-        return std::span<const std::uint8_t>(reinterpret_cast<const std::uint8_t *>(r.data()), r.size());
+        return std::span<std::uint8_t>(reinterpret_cast<std::uint8_t *>(r.data()), r.size());
     };
     auto broken = [this](Errc code) {
         failed_ = true;
         return fail(code);
     };
-    auto open = [this](std::uint8_t *dst, std::span<const std::uint8_t> chunk) {
-        bool ok = static_cast<bool>(engine_.open(dst, chunk, nonce_.data()));
+    // Chunks are opened in place: the plaintext ends up at the front of the
+    // buffer, followed by the tag (and for a request header the padding),
+    // which is skipped once the plaintext has been handed out.
+    auto open = [this](std::span<std::uint8_t> chunk) {
+        bool ok = static_cast<bool>(engine_.open(chunk.data(), chunk, nonce_.data()));
         if (ok) {
             sodium_increment(nonce_.data(), psk_.spec.aead.nonce_len);
         }
@@ -415,6 +417,23 @@ Result<Aead2022TcpDecryptor::Step> Aead2022TcpDecryptor::decrypt(std::span<const
     const std::size_t salt_len = psk_.size();
 
     for (;;) {
+        if (plain_ != 0) {
+            std::size_t n = std::min(plain_, out.size() - step.produced);
+            if (n == 0) {
+                return step;
+            }
+            std::memcpy(out.data() + step.produced, bytes().data(), n);
+            (void)buffer_.consume(n);
+            plain_ -= n;
+            step.produced += n;
+            if (plain_ != 0) {
+                return step;
+            }
+        }
+        if (skip_ != 0) {
+            (void)buffer_.consume(skip_);
+            skip_ = 0;
+        }
         auto data = bytes();
         switch (stage_) {
         case Stage::fixed: {
@@ -431,8 +450,8 @@ Result<Aead2022TcpDecryptor::Step> Aead2022TcpDecryptor::decrypt(std::span<const
             if (!st) {
                 return broken(st.error().code);
             }
-            std::uint8_t fixed[kMaxFixed];
-            if (!open(fixed, data.subspan(salt_len, fixed_len + kTag))) {
+            std::uint8_t *fixed = data.data() + salt_len;
+            if (!open(data.subspan(salt_len, fixed_len + kTag))) {
                 return broken(Errc::crypto);
             }
             std::uint64_t now = unix_now();
@@ -460,46 +479,45 @@ Result<Aead2022TcpDecryptor::Step> Aead2022TcpDecryptor::decrypt(std::span<const
             break;
         }
         case Stage::variable: {
-            if (data.size() < want_ + kTag || out.size() - step.produced < want_) {
+            if (data.size() < want_ + kTag) {
                 return step;
             }
-            std::uint8_t *dst = out.data() + step.produced;
-            if (!open(dst, data.first(want_ + kTag))) {
+            if (!open(data.first(want_ + kTag))) {
                 return broken(Errc::crypto);
             }
-            (void)buffer_.consume(want_ + kTag);
-            if (role_ == Role::client) {
-                step.produced += want_; // the first response payload
-            } else {
-                std::span<const std::uint8_t> hdr(dst, want_);
-                std::size_t addr_len = socks_addr_len(hdr);
-                if (addr_len == 0 || want_ < addr_len + kLenSize) {
-                    return broken(Errc::protocol);
-                }
-                std::size_t pad = load16_be(dst + addr_len);
-                std::size_t off = addr_len + kLenSize + pad;
-                if (pad > k2022MaxPad || off > want_) {
-                    return broken(Errc::protocol);
-                }
-                std::size_t payload = want_ - off;
-                if (payload == 0 && pad == 0) {
-                    return broken(Errc::protocol); // SIP022: neither payload nor padding
-                }
-                std::memmove(dst + addr_len, dst + off, payload);
-                step.produced += addr_len + payload;
-            }
             stage_ = Stage::length;
+            if (role_ == Role::client) {
+                plain_ = want_; // the first response payload
+                skip_  = kTag;
+                break;
+            }
+            std::uint8_t *hdr    = data.data();
+            std::size_t addr_len = socks_addr_len(data.first(want_));
+            if (addr_len == 0 || want_ < addr_len + kLenSize) {
+                return broken(Errc::protocol);
+            }
+            std::size_t pad = load16_be(hdr + addr_len);
+            std::size_t off = addr_len + kLenSize + pad;
+            if (pad > k2022MaxPad || off > want_) {
+                return broken(Errc::protocol);
+            }
+            std::size_t payload = want_ - off;
+            if (payload == 0 && pad == 0) {
+                return broken(Errc::protocol); // SIP022: neither payload nor padding
+            }
+            std::memmove(hdr + addr_len, hdr + off, payload);
+            plain_ = addr_len + payload;
+            skip_  = want_ - plain_ + kTag;
             break;
         }
         case Stage::length: {
             if (data.size() < kLenSize + kTag) {
                 return step;
             }
-            std::uint8_t len[kLenSize];
-            if (!open(len, data.first(kLenSize + kTag))) {
+            if (!open(data.first(kLenSize + kTag))) {
                 return broken(Errc::crypto);
             }
-            want_ = load16_be(len);
+            want_ = load16_be(data.data());
             if (want_ == 0) {
                 return broken(Errc::protocol);
             }
@@ -508,14 +526,14 @@ Result<Aead2022TcpDecryptor::Step> Aead2022TcpDecryptor::decrypt(std::span<const
             break;
         }
         case Stage::payload: {
-            if (data.size() < want_ + kTag || out.size() - step.produced < want_) {
+            if (data.size() < want_ + kTag) {
                 return step;
             }
-            if (!open(out.data() + step.produced, data.first(want_ + kTag))) {
+            if (!open(data.first(want_ + kTag))) {
                 return broken(Errc::crypto);
             }
-            (void)buffer_.consume(want_ + kTag);
-            step.produced += want_;
+            plain_ = want_;
+            skip_  = kTag;
             stage_ = Stage::length;
             break;
         }

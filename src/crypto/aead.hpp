@@ -184,6 +184,8 @@ public:
 
     // Bytes received but not yet decrypted.
     std::size_t pending() const noexcept { return buffer_.size(); }
+    // Input bytes the next decrypt() takes in full.
+    std::size_t accept_limit() const noexcept { return buffer_.capacity() - buffer_.size(); }
     bool salt_received() const noexcept { return engine_ready_; }
 
 private:

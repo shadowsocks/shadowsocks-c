@@ -92,12 +92,14 @@ const std::uint8_t kAddr[] = { 0x03, 11, 'e', 'x', 'a', 'm', 'p', 'l', 'e', '.',
 std::vector<std::uint8_t> cpp_decrypt_all(sc::Aead2022TcpDecryptor &dec, const std::vector<std::uint8_t> &wire)
 {
     std::vector<std::uint8_t> got;
-    std::vector<std::uint8_t> out(sc::k2022MaxChunk);
+    std::vector<std::uint8_t> out(70000);
     for (std::size_t off = 0; off < wire.size();) {
         std::size_t n = std::min<std::size_t>(1 + randombytes_uniform(9000), wire.size() - off);
         std::span<const std::uint8_t> in(wire.data() + off, n);
         for (;;) {
-            auto step = dec.decrypt(in, out);
+            // Output windows of any size, down to one byte.
+            std::size_t room = randombytes_uniform(4) == 0 ? 1 + randombytes_uniform(16) : 1 + randombytes_uniform(70000);
+            auto step = dec.decrypt(in, std::span<std::uint8_t>(out).first(room));
             SS_CHECK(step);
             got.insert(got.end(), out.begin(), out.begin() + step->produced);
             in = in.subspan(step->consumed);

@@ -19,6 +19,6 @@ src/server.cpp 17
 src/ss_event.cpp 5
 src/ssurl.cpp 3
 src/stream.cpp 3
-src/tunnel.cpp 14
+src/tunnel.cpp 2
 src/udprelay.cpp 7
 src/utils.cpp 10
