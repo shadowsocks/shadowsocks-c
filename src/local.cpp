@@ -64,6 +64,7 @@
 #include "common.h"
 #include "ss_windows.h"
 
+#include "core/heap_guard.hpp"
 #include "relay/tcp.hpp"
 #include "relay/udp.hpp"
 
@@ -447,6 +448,10 @@ plugin_watcher_cb(SS_P_ ss_io *w, int revents)
 int
 main(int argc, char **argv)
 {
+    // Bounded heaps for libuv, c-ares and Mbed TLS before any of them runs.
+    if (!ss::install_library_heaps())
+        FATAL("failed to reserve the library heaps");
+
     int i, c;
     int pid_flags    = 0;
     int mtu          = 0;
@@ -1274,6 +1279,7 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 #endif
 
     // Enter the loop
+    ss::heap_seal();
     ss_run(loop, 0);
 
     if (verbose) {
@@ -1295,6 +1301,9 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 
     winsock_cleanup();
 #endif
+
+    if (verbose)
+        ss::log_heap_report();
 
     return ret_val;
 }

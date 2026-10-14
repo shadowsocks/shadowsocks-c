@@ -231,6 +231,8 @@ char *ss_strndup(const char *s, size_t n);
 int set_nofile(int nofile);
 #endif
 
+extern int ss_heap_sealed;
+extern size_t ss_heap_late_allocations;
 void *ss_malloc(size_t size);
 void *ss_aligned_malloc(size_t size);
 void *ss_realloc(void *ptr, size_t new_size);

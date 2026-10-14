@@ -27,7 +27,8 @@ import threading
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from interop import TCPHandler, TCPOrigin, free_port, peers, receive, socks  # noqa: E402
+from interop import (TCPHandler, TCPOrigin, UDPHandler, UDPOrigin, free_port, peers, receive, socks,  # noqa: E402
+                     udp_case)
 
 
 def read_snapshot(path, previous_lines, timeout=10):
@@ -59,7 +60,12 @@ def tcp_case(local_port, target, origin_port, size):
         upload.result(timeout=10)
 
 
-def relay(local_port, target, origin_port, connections, concurrency, size):
+def relay(local_port, target, origin_port, connections, concurrency, size, udp=False):
+    if udp:
+        # Each case is a UDP association with four datagrams.
+        for _ in range(connections):
+            udp_case(local_port, origin_port)
+        return
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = [pool.submit(tcp_case, local_port, target, origin_port, size) for _ in range(connections)]
         for future in futures:
@@ -76,6 +82,7 @@ def main():
     parser.add_argument("--concurrency", type=int, default=10)
     parser.add_argument("--size", type=int, default=16384, help="bytes echoed per connection")
     parser.add_argument("--max-per-connection", type=float, help="fail if any peer exceeds this")
+    parser.add_argument("--udp", action="store_true", help="relay UDP associations instead of TCP streams")
     parser.add_argument("--target", default="localhost",
                         help="destination host sent to the server; a name makes the server resolve it")
     parser.add_argument("--json", action="store_true", help="print the result as JSON")
@@ -87,17 +94,19 @@ def main():
     key_size = 16 if args.method == "2022-blake3-aes-128-gcm" else 32
     password = base64.b64encode(os.urandom(key_size)).decode("ascii")
 
-    with TCPOrigin(("127.0.0.1", 0), TCPHandler) as origin, \
+    origin_class, handler = (UDPOrigin, UDPHandler) if args.udp else (TCPOrigin, TCPHandler)
+    with origin_class(("127.0.0.1", 0), handler) as origin, \
             tempfile.TemporaryDirectory(prefix="ss-alloc-") as temp:
         threading.Thread(target=origin.serve_forever, daemon=True).start()
         server_port, local_port = free_port(), free_port()
         names = ["ss-server", "ss-local"]
         outputs = [Path(temp) / f"{name}.counts" for name in names]
+        udp = ["-u"] if args.udp else []
         commands = [
             [str(binary_dir / "ss-server"), "-s", "127.0.0.1", "-p", str(server_port),
-             "-k", password, "-m", args.method],
+             "-k", password, "-m", args.method] + udp,
             [str(binary_dir / "ss-local"), "-s", "127.0.0.1", "-p", str(server_port),
-             "-l", str(local_port), "-k", password, "-m", args.method],
+             "-l", str(local_port), "-k", password, "-m", args.method] + udp,
         ]
         environments = []
         for output in outputs:
@@ -112,10 +121,11 @@ def main():
                 peers([commands[1]], [local_port], environments[1]) as local:
             processes = server + local
             counts = [0, 0]
-            relay(local_port, args.target, origin.server_address[1], args.warmup, args.concurrency, args.size)
+            relay(local_port, args.target, origin.server_address[1], args.warmup, args.concurrency, args.size, args.udp)
             time.sleep(.5)
             before = snapshot_all(processes, outputs, counts)
-            relay(local_port, args.target, origin.server_address[1], args.connections, args.concurrency, args.size)
+            relay(local_port, args.target, origin.server_address[1], args.connections, args.concurrency, args.size,
+                  args.udp)
             time.sleep(.5)
             after = snapshot_all(processes, outputs, counts)
 

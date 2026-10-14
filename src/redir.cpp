@@ -56,6 +56,7 @@
 #include "jconf.h"
 #include "common.h"
 
+#include "core/heap_guard.hpp"
 #include "relay/tcp.hpp"
 #include "relay/udp.hpp"
 
@@ -224,6 +225,10 @@ signal_cb(SS_P_ ss_signal *w, int revents)
 int
 main(int argc, char **argv)
 {
+    // Bounded heaps for libuv, c-ares and Mbed TLS before any of them runs.
+    if (!ss::install_library_heaps())
+        FATAL("failed to reserve the library heaps");
+
     int i, c;
     int pid_flags    = 0;
     int mptcp        = 0;
@@ -944,6 +949,7 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         LOGI("running from root user");
     }
 
+    ss::heap_seal();
     ss_run(loop, 0);
 
     if (plugin != NULL) {
@@ -956,6 +962,9 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         tcp_loop.run_nowait();
     }
     (void)tcp_running;
+
+    if (verbose)
+        ss::log_heap_report();
 
     return ret_val;
 }

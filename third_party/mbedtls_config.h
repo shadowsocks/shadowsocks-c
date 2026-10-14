@@ -19,6 +19,8 @@
 #define MBEDTLS_SHA256_C
 #define MBEDTLS_SHA512_C
 #define MBEDTLS_PLATFORM_C
+/* The programs route Mbed TLS allocations into a bounded heap. */
+#define MBEDTLS_PLATFORM_MEMORY
 #define MBEDTLS_VERSION_C
 #define MBEDTLS_VERSION_FEATURES
 #define MBEDTLS_CIPHER_MODE_CTR

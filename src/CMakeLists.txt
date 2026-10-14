@@ -50,6 +50,7 @@ endif()
 
 # The C++ relay engine (src/relay) and the codecs it runs on.
 set(SS_RELAY_SOURCE
+        core/heap_guard.cpp
         relay/codec.cpp
         relay/socket.cpp
         relay/tcp.cpp

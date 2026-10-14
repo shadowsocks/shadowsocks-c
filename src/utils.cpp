@@ -271,9 +271,21 @@ FATAL(const char *msg)
     exit(-1);
 }
 
+/* Set once startup is over (see core/heap_guard.hpp); allocations through
+ * these helpers are counted from then on. */
+int ss_heap_sealed            = 0;
+size_t ss_heap_late_allocations = 0;
+
+#define NOTE_ALLOCATION()             \
+    do {                              \
+        if (ss_heap_sealed)           \
+            ss_heap_late_allocations++; \
+    } while (0)
+
 void *
 ss_malloc(size_t size)
 {
+    NOTE_ALLOCATION();
     void *tmp = malloc(size);
     if (tmp == NULL)
         exit(EXIT_FAILURE);
@@ -283,6 +295,7 @@ ss_malloc(size_t size)
 void *
 ss_aligned_malloc(size_t size)
 {
+    NOTE_ALLOCATION();
     int err;
     void *tmp = NULL;
 #ifdef HAVE_POSIX_MEMALIGN
@@ -304,6 +317,7 @@ ss_aligned_malloc(size_t size)
 void *
 ss_realloc(void *ptr, size_t new_size)
 {
+    NOTE_ALLOCATION();
     void *resized = realloc(ptr, new_size);
     if (resized == NULL) {
         free(ptr);

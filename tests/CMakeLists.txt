@@ -343,11 +343,33 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
                         --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_cache_cpp>)
             set_tests_properties(alloc_steady_cache PROPERTIES LABELS "unit" TIMEOUT 60)
-            add_test(NAME alloc_audit_report
-                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/measure_alloc.py
-                        --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
-                        --shim $<TARGET_FILE:ss_alloc_audit>)
-            set_tests_properties(alloc_audit_report PROPERTIES LABELS "integration" TIMEOUT 120)
+            # The programs: no heap allocation per relayed connection once
+            # started, by name (DNS through the bounded c-ares heap) and by
+            # address, for each cipher family.
+            set(SS_ALLOC_CASES "aes-256-gcm@localhost" "2022-blake3-aes-256-gcm@127.0.0.1"
+                               "chacha20-ietf-poly1305@127.0.0.1")
+            if(SS_ENABLE_LEGACY)
+                list(APPEND SS_ALLOC_CASES "aes-256-cfb@127.0.0.1")
+            endif()
+            foreach(case ${SS_ALLOC_CASES})
+                string(REPLACE "@" ";" parts "${case}")
+                list(GET parts 0 method)
+                list(GET parts 1 target)
+                add_test(NAME alloc_steady_programs_${method}
+                    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/measure_alloc.py
+                            --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+                            --shim $<TARGET_FILE:ss_alloc_audit>
+                            --method ${method} --target ${target} --max-per-connection 0)
+                set_tests_properties(alloc_steady_programs_${method} PROPERTIES LABELS "integration" TIMEOUT 120)
+            endforeach()
+            foreach(method aes-256-gcm 2022-blake3-aes-256-gcm)
+                add_test(NAME alloc_steady_programs_udp_${method}
+                    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/measure_alloc.py
+                            --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+                            --shim $<TARGET_FILE:ss_alloc_audit>
+                            --method ${method} --udp --warmup 20 --connections 50 --max-per-connection 0)
+                set_tests_properties(alloc_steady_programs_udp_${method} PROPERTIES LABELS "integration" TIMEOUT 120)
+            endforeach()
         endif()
         add_test(NAME test_printable_salt_interop
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/interop.py
