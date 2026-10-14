@@ -45,6 +45,17 @@ using event::Flow;
 
 namespace {
 
+#ifdef __linux__
+// musl's CMSG_NXTHDR compares a size_t with a ptrdiff_t.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
+cmsghdr *next_cmsg(msghdr *msg, cmsghdr *c) noexcept
+{
+    return CMSG_NXTHDR(msg, c);
+}
+#pragma GCC diagnostic pop
+#endif
+
 constexpr int kQosTos             = 46 << 2; // DSCP EF, as udprelay.cpp
 constexpr int kReceiveBurst       = 64;
 constexpr std::uint64_t kTtl2022  = 600; // seconds an idle AEAD-2022 client session is kept
@@ -339,7 +350,7 @@ void UdpRelay::receive(Listener &listener) noexcept
             msg.msg_iovlen     = 1;
             r                  = recvmsg(listener.poll.fd(), &msg, 0);
             if (r >= 0) {
-                for (cmsghdr *c = CMSG_FIRSTHDR(&msg); c != nullptr; c = CMSG_NXTHDR(&msg, c)) {
+                for (cmsghdr *c = CMSG_FIRSTHDR(&msg); c != nullptr; c = next_cmsg(&msg, c)) {
                     if (c->cmsg_level == SOL_IP && c->cmsg_type == IP_RECVORIGDSTADDR) {
                         std::memcpy(&original, CMSG_DATA(c), sizeof(sockaddr_in));
                         original.ss_family = AF_INET;
