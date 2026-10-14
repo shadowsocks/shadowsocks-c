@@ -35,14 +35,16 @@ parser.add_argument('-a', '--client-args', type=str, default=None)
 parser.add_argument('-b', '--server-args', type=str, default=None)
 parser.add_argument('--should-fail', action='store_true', default=None)
 parser.add_argument('--url', type=str, default=default_url)
-parser.add_argument('--dns', type=str, default='8.8.8.8')
+parser.add_argument('--dns', type=str, default='8.8.8.8',
+                    help='DNS server for the tunnel test, host or host:port (default port 53)')
 parser.add_argument('--bin', type=str, default='')
 
 config = parser.parse_args()
 
 client_args = ['%s%s' % (config.bin, 'ss-local'), '-v']
 server_args = ['%s%s' % (config.bin, 'ss-server'), '-v', '-u']
-tunnel_args = ['%s%s' % (config.bin, 'ss-tunnel'), '-v', '-u', '-l1082', '-L%s:53' % config.dns]
+dns_target = config.dns if config.dns.count(':') == 1 else '%s:53' % config.dns
+tunnel_args = ['%s%s' % (config.bin, 'ss-tunnel'), '-v', '-u', '-l1082', '-L%s' % dns_target]
 
 if config.client_conf:
     client_args.extend(['-c', config.client_conf])
