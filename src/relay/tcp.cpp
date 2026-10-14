@@ -412,6 +412,10 @@ Flow Connection::start(ss_socket_t fd) noexcept
         return close();
     }
     const TcpConfig &cfg = relay_->config_;
+    // Every connection is timed from the start, so a client that never
+    // finishes its handshake cannot hold a pool slot forever. Later stages
+    // replace this with their own deadline.
+    relay_->set_deadline(*this, Timed::idle);
     switch (cfg.kind) {
     case Kind::local:
         if (verbose) {
@@ -443,7 +447,6 @@ Flow Connection::start(ss_socket_t fd) noexcept
             return close();
         }
         stage_ = Stage::header;
-        relay_->set_deadline(*this, Timed::idle);
         update_interest();
         return Flow::proceed;
     }
@@ -974,7 +977,7 @@ Flow Connection::server_connect(const sockaddr *target) noexcept
 Flow Connection::connected() noexcept
 {
     if (client_kind()) {
-        relay_->clear_deadline(*this); // only the connect was timed
+        relay_->set_deadline(*this, Timed::idle); // replaces the connect deadline
     }
     stage_ = Stage::stream;
     if (pump_to_upstream() == Flow::closed) {
@@ -1044,7 +1047,7 @@ Connection::Pull Connection::pull(ss_socket_t fd, bool decode, FixedBuffer<kRela
             cfg.on_traffic();
         }
     }
-    if (cfg.kind == Kind::server && stage_ == Stage::stream) {
+    if (stage_ == Stage::stream) {
         relay_->set_deadline(*this, Timed::idle);
     }
     std::span<const std::uint8_t> in(relay_->scratch_.data(), *r);
