@@ -39,6 +39,10 @@
 #include <netdb.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Hard coded defines for TCP fast open on Android */
 #ifdef __ANDROID__
 #ifndef TCP_FASTOPEN
@@ -126,5 +130,9 @@ int sockaddr_cmp_addr(struct sockaddr_storage *addr1,
 int validate_hostname(const char *hostname, const int hostname_len);
 
 int is_ipv6only(ss_addr_t *servers, size_t server_num, int ipv6first);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

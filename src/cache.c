@@ -50,20 +50,20 @@ int
 cache_create(struct cache **dst, const size_t capacity,
              void (*free_cb)(void *key, void *element))
 {
-    struct cache *new = NULL;
+    struct cache *created = NULL;
 
     if (!dst) {
         return EINVAL;
     }
 
-    if ((new = malloc(sizeof(*new))) == NULL) {
+    if ((created = (struct cache *)malloc(sizeof(*created))) == NULL) {
         return ENOMEM;
     }
 
-    new->max_entries = capacity;
-    new->entries     = NULL;
-    new->free_cb     = free_cb;
-    *dst             = new;
+    created->max_entries = capacity;
+    created->entries     = NULL;
+    created->free_cb     = free_cb;
+    *dst                 = created;
     return 0;
 }
 
@@ -212,7 +212,7 @@ int
 cache_lookup(struct cache *cache, char *key, size_t key_len, void *result)
 {
     struct cache_entry *tmp = NULL;
-    char **dirty_hack       = result;
+    void **out              = (void **)result;
 
     if (!cache || !key || !result) {
         return EINVAL;
@@ -224,9 +224,9 @@ cache_lookup(struct cache *cache, char *key, size_t key_len, void *result)
         tmp->ts = ss_monotonic_time();
         // NOLINTNEXTLINE(clang-analyzer-core.DivideZero): uthash bucket count is never zero
         HASH_ADD_KEYPTR(hh, cache->entries, tmp->key, key_len, tmp);
-        *dirty_hack = tmp->data;
+        *out = tmp->data;
     } else {
-        *dirty_hack = result = NULL;
+        *out = NULL;
     }
 
     return 0;
@@ -279,11 +279,11 @@ cache_insert(struct cache *cache, char *key, size_t key_len, void *data)
         return EINVAL;
     }
 
-    if ((entry = malloc(sizeof(*entry))) == NULL) {
+    if ((entry = (struct cache_entry *)malloc(sizeof(*entry))) == NULL) {
         return ENOMEM;
     }
 
-    entry->key = ss_malloc(key_len + 1);
+    entry->key = (char *)ss_malloc(key_len + 1);
     memcpy(entry->key, key, key_len);
     entry->key[key_len] = 0;
 

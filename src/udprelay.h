@@ -38,6 +38,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define MAX_UDP_PACKET_SIZE (65507)
 
 #define PACKET_HEADER_SIZE (1 + 28 + 2 + 64)
@@ -91,5 +95,9 @@ typedef struct remote_ctx {
     void *udp_session;
     struct server_ctx *server_ctx;
 } remote_ctx_t;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _UDPRELAY_H

@@ -30,6 +30,10 @@
 #include <stdio.h>
 #include <time.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define PORTSTRLEN 16
 #define SS_ADDRSTRLEN (INET6_ADDRSTRLEN + PORTSTRLEN + 1)
 
@@ -251,5 +255,9 @@ int ss_is_ipv6addr(const char *addr);
 char *get_default_conf(void);
 uint16_t load16_be(const void *s);
 int get_mptcp(int enable);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _UTILS_H

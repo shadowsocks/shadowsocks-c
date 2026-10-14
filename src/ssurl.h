@@ -23,6 +23,10 @@
 #ifndef _SSURL_H
 #define _SSURL_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /*
  * A parsed ss:// URI. Every field is heap-allocated and owned by the
  * struct; release them all with ss_url_free(). Fields that the URI did not
@@ -54,5 +58,9 @@ int ss_url_parse(const char *uri, ss_url_t *url);
 
 /* Free every field and zero the struct. Safe on a zeroed struct. */
 void ss_url_free(ss_url_t *url);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _SSURL_H

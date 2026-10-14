@@ -23,6 +23,10 @@
 #ifndef _SOCKS5_H
 #define _SOCKS5_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define SVERSION 0x05
 #define METHOD_NOAUTH 0x00
 #define METHOD_UNACCEPTABLE 0xff
@@ -71,5 +75,9 @@ struct socks5_response {
     unsigned char rsv;
     unsigned char atyp;
 } __attribute__((packed, aligned(1)));
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _SOCKS5_H

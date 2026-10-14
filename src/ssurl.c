@@ -50,7 +50,7 @@ find_last(const char *s, size_t len, char c)
 static char *
 str_ndup(const char *s, size_t n)
 {
-    char *out = ss_malloc(n + 1);
+    char *out = (char *)ss_malloc(n + 1);
 
     memcpy(out, s, n);
     out[n] = '\0';
@@ -73,7 +73,7 @@ hex_value(char c)
 static char *
 percent_decode(const char *s, size_t len)
 {
-    char *out = ss_malloc(len + 1);
+    char *out = (char *)ss_malloc(len + 1);
     size_t o  = 0;
 
     for (size_t i = 0; i < len; i++) {
@@ -106,7 +106,7 @@ base64_dup(const char *s, size_t len)
 
     char *in  = str_ndup(s, len);
     /* decoded output is always shorter than the encoded input */
-    uint8_t *out = ss_malloc(len + 1);
+    uint8_t *out = (uint8_t *)ss_malloc(len + 1);
 
     int out_len = base64_decode(out, in, (int)len);
     ss_free(in);
@@ -131,7 +131,7 @@ split_host_port(const char *s, size_t len, ss_url_t *url)
         return -1;
 
     if (s[0] == '[') {
-        const char *close = memchr(s, ']', len);
+        const char *close = (const char *)memchr(s, ']', len);
         if (close == NULL)
             return -1;
 
@@ -186,9 +186,9 @@ parse_query(const char *s, size_t len, ss_url_t *url)
     const char *end = s + len;
 
     while (s < end) {
-        const char *amp = memchr(s, '&', (size_t)(end - s));
+        const char *amp = (const char *)memchr(s, '&', (size_t)(end - s));
         const char *pair_end = amp ? amp : end;
-        const char *eq = memchr(s, '=', (size_t)(pair_end - s));
+        const char *eq = (const char *)memchr(s, '=', (size_t)(pair_end - s));
 
         if (eq != NULL) {
             size_t name_len = (size_t)(eq - s);
@@ -244,13 +244,13 @@ ss_url_parse(const char *uri, ss_url_t *url)
         return -1;
 
     /* The fragment is a human-readable tag and is not part of the config. */
-    const char *hash = memchr(body, '#', body_len);
+    const char *hash = (const char *)memchr(body, '#', body_len);
     if (hash != NULL) {
         url->tag = percent_decode(hash + 1, body_len - (size_t)(hash - body) - 1);
         body_len = (size_t)(hash - body);
     }
 
-    const char *query = memchr(body, '?', body_len);
+    const char *query = (const char *)memchr(body, '?', body_len);
     size_t head_len   = query ? (size_t)(query - body) : body_len;
 
     /*

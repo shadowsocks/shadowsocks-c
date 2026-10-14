@@ -25,6 +25,10 @@
 
 #include "crypto.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // currently, XCHACHA20POLY1305IETF is not released yet
 // XCHACHA20POLY1305 is removed in upstream
 #ifdef FS_HAVE_XCHACHA20IETF
@@ -51,5 +55,9 @@ void aead_set_role(int role); /* override compile-time default; used by tests */
 int aead_2022_encrypt_udp(buffer_t *, cipher_t *, size_t, void **);
 int aead_2022_decrypt_udp(buffer_t *, cipher_t *, size_t, void **);
 void aead_2022_udp_session_release(void *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _AEAD_H

@@ -22,6 +22,10 @@
 #ifndef _JCONF_H
 #define _JCONF_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define MAX_PORT_NUM 1024
 #define MAX_REMOTE_NUM 10
 #define MAX_DSCP_NUM 64
@@ -98,5 +102,9 @@ void parse_addr(const char *str, ss_addr_t *addr);
 void free_addr(ss_addr_t *addr);
 int parse_server_endpoint(const char *str, ss_addr_t *addr);
 int complete_server_ports(ss_addr_t *addr, int count, const char *fallback, int plugin);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _JCONF_H

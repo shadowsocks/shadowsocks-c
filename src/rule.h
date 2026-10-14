@@ -38,6 +38,10 @@
 #include <pcre2.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct rule {
     struct ss_list_item entries;
 
@@ -60,5 +64,9 @@ void free_rule(rule_t *);
 void remove_rule(rule_t *);
 rule_t *new_rule();
 int accept_rule_arg(rule_t *, const char *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

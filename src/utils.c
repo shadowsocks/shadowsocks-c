@@ -164,8 +164,10 @@ run_as(const char *user)
         size_t buflen;
         int err;
 
+        /* The loop below gives up beyond 16 KiB, so one fixed buffer covers
+         * every attempt. */
+        char buf[16 * 1024];
         for (buflen = 128;; buflen *= 2) {
-            char buf[buflen];  /* variable length array */
 
             /* Note that we use getpwnam_r() instead of getpwnam(),
              * which returns its result in a statically allocated buffer and
@@ -256,7 +258,7 @@ ss_strndup(const char *s, size_t n)
         len++;
     }
 
-    ret = ss_malloc(len + 1);
+    ret = (char *)ss_malloc(len + 1);
     memcpy(ret, s, len);
     ret[len] = '\0';
     return ret;
@@ -302,13 +304,13 @@ ss_aligned_malloc(size_t size)
 void *
 ss_realloc(void *ptr, size_t new_size)
 {
-    void *new = realloc(ptr, new_size);
-    if (new == NULL) {
+    void *resized = realloc(ptr, new_size);
+    if (resized == NULL) {
         free(ptr);
         ptr = NULL;
         exit(EXIT_FAILURE);
     }
-    return new;
+    return resized;
 }
 
 int
@@ -803,7 +805,7 @@ daemonize(const char *path)
 int
 set_nofile(int nofile)
 {
-    struct rlimit limit = { nofile, nofile }; /* set both soft and hard limit */
+    struct rlimit limit = { (rlim_t)nofile, (rlim_t)nofile }; /* set both soft and hard limit */
 
     if (nofile <= 0) {
         FATAL("nofile must be greater than 0\n");

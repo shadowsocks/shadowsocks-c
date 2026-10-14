@@ -30,6 +30,10 @@
 
 #include "uthash.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * A cache entry
  */
@@ -57,5 +61,9 @@ int cache_lookup(struct cache *cache, char *key, size_t key_len, void *result);
 int cache_insert(struct cache *cache, char *key, size_t key_len, void *data);
 int cache_remove(struct cache *cache, char *key, size_t key_len);
 int cache_key_exist(struct cache *cache, char *key, size_t key_len);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

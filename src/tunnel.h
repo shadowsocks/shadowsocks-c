@@ -34,6 +34,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct listen_ctx {
     ss_io io;
     ss_addr_t tunnel_addr;
@@ -83,5 +87,9 @@ typedef struct remote {
     struct sockaddr *addr;
     uint32_t counter;
 } remote_t;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _TUNNEL_H

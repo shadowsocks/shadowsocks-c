@@ -27,6 +27,10 @@
 #include "crypto.h"
 #include "jconf.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct listen_ctx {
     ss_io io;
     int remote_num;
@@ -74,5 +78,9 @@ typedef struct remote {
     uint32_t counter;
     struct sockaddr *addr;
 } remote_t;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _REDIR_H

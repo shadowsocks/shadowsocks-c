@@ -32,6 +32,10 @@
 
 #include "crypto.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int init_udprelay(const char *server_host, const char *server_port,
 #ifdef MODULE_LOCAL
                   const struct sockaddr *remote_addr, const int remote_addr_len,
@@ -82,5 +86,9 @@ enum {
     GETOPT_VAL_TCP_ONLY,
     GETOPT_VAL_IPV4_FIRST
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _COMMON_H

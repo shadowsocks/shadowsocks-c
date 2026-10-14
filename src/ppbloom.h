@@ -23,9 +23,17 @@
 #ifndef _PPBLOOM_
 #define _PPBLOOM_
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 int ppbloom_init(int entries, double error);
 int ppbloom_check(const void *buffer, int len);
 int ppbloom_add(const void *buffer, int len);
 void ppbloom_free(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

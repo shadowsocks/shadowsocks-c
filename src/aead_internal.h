@@ -25,6 +25,10 @@
 
 #include "crypto.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* AEAD method identifiers (indexes into the supported_aead_ciphers tables) */
 #define AES128GCM               0
 #define AES192GCM               1
@@ -72,5 +76,9 @@ int ss2022_tcp_encrypt(buffer_t *plaintext, cipher_ctx_t *cipher_ctx,
                        size_t capacity);
 int ss2022_tcp_decrypt(buffer_t *ciphertext, cipher_ctx_t *cipher_ctx,
                        size_t capacity);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _AEAD_INTERNAL_H

@@ -23,6 +23,10 @@
 #ifndef _ACL_H
 #define _ACL_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define BLACK_LIST 0
 #define WHITE_LIST 1
 
@@ -36,5 +40,9 @@ int acl_remove_ip(const char *ip);
 int get_acl_mode(void);
 
 int outbound_block_match_host(const char *host);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _ACL_H

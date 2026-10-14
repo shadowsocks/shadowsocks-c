@@ -14,7 +14,7 @@ struct ss_ipset_node {
 static struct ss_ipset_node *
 node_new(bool full)
 {
-    struct ss_ipset_node *node = ss_malloc(sizeof(*node));
+    struct ss_ipset_node *node = (struct ss_ipset_node *)ss_malloc(sizeof(*node));
     node->child[0] = node->child[1] = NULL;
     node->full = full;
     return node;

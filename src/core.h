@@ -6,6 +6,10 @@
 #include <stdint.h>
 #include "platform.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define ss_container_of(ptr, type, member) ((type *)((char *)(ptr) - offsetof(type, member)))
 
 struct ss_list_item {
@@ -71,4 +75,8 @@ ss_ip_init(struct ss_ip *ip, const char *text)
     ip->version = 0;
     return -1;
 }
+#ifdef __cplusplus
+}
+#endif
+
 #endif

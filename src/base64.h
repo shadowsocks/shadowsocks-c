@@ -23,6 +23,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * Decode a base64-encoded string.
  *
@@ -50,5 +54,9 @@ char *base64_encode(char *out, int out_size, const uint8_t *in, int in_size);
  * Calculate the output size needed to base64-encode x bytes.
  */
 #define BASE64_SIZE(x)  (((x)+2) / 3 * 4 + 1)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* BASE64_H */

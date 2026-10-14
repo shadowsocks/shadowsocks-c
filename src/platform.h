@@ -17,6 +17,10 @@ typedef SOCKET ss_socket_t;
 typedef int ss_socket_t;
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* Socket errors are separate from CRT errno on Windows. Return normalized
  * errno constants for portable branching without redefining libc names. */
 static inline int
@@ -117,4 +121,8 @@ ss_monotonic_time(void)
     return (double)value.tv_sec + (double)value.tv_nsec / 1000000000.0;
 #endif
 }
+#ifdef __cplusplus
+}
+#endif
+
 #endif

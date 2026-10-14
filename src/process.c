@@ -32,7 +32,7 @@ static char *
 copy_string(const char *text)
 {
     size_t size = strlen(text) + 1;
-    char *copy = ss_malloc(size);
+    char *copy = (char *)ss_malloc(size);
     memcpy(copy, text, size);
     return copy;
 }
@@ -40,7 +40,7 @@ copy_string(const char *text)
 struct ss_process *
 ss_process_new(const char *program)
 {
-    struct ss_process *process = ss_malloc(sizeof(*process));
+    struct ss_process *process = (struct ss_process *)ss_malloc(sizeof(*process));
     memset(process, 0, sizeof(*process));
     process->program = copy_string(program);
     return process;
@@ -49,7 +49,7 @@ ss_process_new(const char *program)
 void
 ss_process_arg(struct ss_process *process, const char *argument)
 {
-    process->argv = ss_realloc(process->argv, (process->argc + 2) * sizeof(char *));
+    process->argv = (char **)ss_realloc(process->argv, (process->argc + 2) * sizeof(char *));
     process->argv[process->argc++] = copy_string(argument);
     process->argv[process->argc] = NULL;
 }
@@ -58,9 +58,9 @@ void
 ss_process_env(struct ss_process *process, const char *name, const char *value)
 {
     size_t size = strlen(name) + strlen(value) + 2;
-    char *entry = ss_malloc(size);
+    char *entry = (char *)ss_malloc(size);
     snprintf(entry, size, "%s=%s", name, value);
-    process->env = ss_realloc(process->env, (process->envc + 2) * sizeof(char *));
+    process->env = (char **)ss_realloc(process->env, (process->envc + 2) * sizeof(char *));
     process->env[process->envc++] = entry;
     process->env[process->envc] = NULL;
 }
@@ -90,7 +90,7 @@ ss_process_start(struct ss_process *process, uint16_t control_port)
     while (environ[count] != NULL) {
         count++;
     }
-    char **env = ss_malloc((count + process->envc + 1) * sizeof(char *));
+    char **env = (char **)ss_malloc((count + process->envc + 1) * sizeof(char *));
     for (size_t i = 0; i < count; i++) {
         if (!overridden(process, environ[i])) {
             env[used++] = environ[i];

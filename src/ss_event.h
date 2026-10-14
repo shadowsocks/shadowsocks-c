@@ -3,6 +3,10 @@
 #ifndef SS_EVENT_H
 #define SS_EVENT_H
 #include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 /* Keep platform headers private: Linux TCP headers differ from libc headers. */
 struct uv_loop_s;
 struct ss_loop;
@@ -55,4 +59,8 @@ void ss_timer_again(struct ss_loop *, ss_timer *);
 void ss_signal_init(ss_signal *, void (*)(struct ss_loop *, ss_signal *, int), int);
 void ss_signal_start(struct ss_loop *, ss_signal *);
 void ss_signal_stop(struct ss_loop *, ss_signal *);
+#ifdef __cplusplus
+}
+#endif
+
 #endif

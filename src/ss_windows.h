@@ -44,6 +44,10 @@
 #include <ws2tcpip.h>
 #include <mswsock.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // Check if ConnectEx supported in header
 #ifdef WSAID_CONNECTEX
 // Hardcode TCP fast open option
@@ -78,6 +82,10 @@ void winsock_cleanup(void);
 #ifdef TCP_FASTOPEN_WINSOCK
 LPFN_CONNECTEX winsock_getconnectex(void);
 int winsock_dummybind(SOCKET fd, struct sockaddr *sa);
+#endif
+
+#ifdef __cplusplus
+}
 #endif
 
 #endif // __MINGW32__

@@ -33,6 +33,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct manager_ctx {
     ss_io io;
     int fd;
@@ -74,5 +78,9 @@ struct server {
     char *plugin_opts;
     uint64_t traffic;
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _MANAGER_H

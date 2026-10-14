@@ -36,6 +36,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct listen_ctx {
     ss_io io;
     char *iface;
@@ -99,5 +103,9 @@ typedef struct remote {
     struct server *server;
     struct sockaddr_storage addr;
 } remote_t;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _LOCAL_H

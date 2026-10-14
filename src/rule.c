@@ -40,7 +40,7 @@ new_rule()
 {
     rule_t *rule;
 
-    rule = calloc(1, sizeof(rule_t));
+    rule = (rule_t *)calloc(1, sizeof(rule_t));
     if (rule == NULL) {
         ERROR("malloc");
         return NULL;

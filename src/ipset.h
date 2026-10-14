@@ -4,6 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct ss_ipset_node;
 struct ss_ipset {
     struct ss_ipset_node *root;
@@ -15,4 +19,8 @@ void ss_ipset_clear(struct ss_ipset *set);
 void ss_ipset_assign(struct ss_ipset *set, const uint8_t *address,
                      unsigned width, unsigned prefix, bool present);
 bool ss_ipset_contains(const struct ss_ipset *set, const uint8_t *address, unsigned width);
+#ifdef __cplusplus
+}
+#endif
+
 #endif

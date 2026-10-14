@@ -35,6 +35,10 @@
 #include <sys/socket.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct ss_loop;
 struct resolv_query;
 
@@ -43,5 +47,9 @@ void resolv_start(const char *hostname, uint16_t port,
                   void (*client_cb)(struct sockaddr *, void *),
                   void (*free_cb)(void *), void *data);
 void resolv_shutdown(struct ss_loop *);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

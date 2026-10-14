@@ -38,6 +38,10 @@
 
 #include "common.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct listen_ctx {
     ss_io io;
     int fd;
@@ -113,5 +117,9 @@ typedef struct remote {
     struct remote_ctx *send_ctx;
     struct server *server;
 } remote_t;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // _SERVER_H
