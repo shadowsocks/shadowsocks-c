@@ -34,6 +34,10 @@ class UDPHandler(socketserver.BaseRequestHandler):
 
 class TCPOrigin(socketserver.ThreadingTCPServer):
     daemon_threads = True
+    # socketserver's default listen backlog is 5. Concurrent connections
+    # through the proxy overflow it on a loaded machine; the kernel then
+    # resets the origin connection, which looks like a proxy failure.
+    request_queue_size = 256
 
 
 class UDPOrigin(socketserver.ThreadingUDPServer):
