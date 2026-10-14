@@ -222,6 +222,12 @@ ss_add_test(test_crypto_aead_cpp
     "${TEST_CRYPTO_LIBS};${SS_MATH_LIBRARY}")
 ss_strict_warnings(test_crypto_aead_cpp.cpp ${PROJECT_SOURCE_DIR}/src/crypto/aead.cpp)
 
+# test_crypto_aead2022_cpp - C++ SIP022 codecs, differentially against aead2022.cpp
+ss_add_test(test_crypto_aead2022_cpp
+    "test_crypto_aead2022_cpp.cpp;${PROJECT_SOURCE_DIR}/src/crypto/aead2022.cpp;${PROJECT_SOURCE_DIR}/src/crypto/aead.cpp;${SS_CRYPTO_TEST_SOURCES}"
+    "${TEST_CRYPTO_LIBS};${SS_MATH_LIBRARY}")
+ss_strict_warnings(test_crypto_aead2022_cpp.cpp ${PROJECT_SOURCE_DIR}/src/crypto/aead2022.cpp)
+
 if(SS_ENABLE_LEGACY)
 # test_crypto_stream_cpp - C++ stream codecs, differentially against stream.cpp
 ss_add_test(test_crypto_stream_cpp
@@ -323,6 +329,10 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
                         --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_crypto_aead_cpp>)
             set_tests_properties(alloc_steady_crypto_aead PROPERTIES LABELS "unit" TIMEOUT 60)
+            add_test(NAME alloc_steady_crypto_aead2022
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
+                        --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_crypto_aead2022_cpp>)
+            set_tests_properties(alloc_steady_crypto_aead2022 PROPERTIES LABELS "unit" TIMEOUT 60)
             if(TARGET test_crypto_stream_cpp)
                 add_test(NAME alloc_steady_crypto_stream
                     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py

@@ -239,6 +239,14 @@ using Status = Result<void>;
         }                                                    \
     } while (0)
 
+// Declare `name` as the value of a Result, or propagate its error.
+#define SS_TRY_ASSIGN(name, expr)                       \
+    auto name##_result_ = (expr);                       \
+    if (!name##_result_) {                              \
+        return ::ss::fail(name##_result_.error());      \
+    }                                                   \
+    auto name = std::move(*name##_result_)
+
 } // namespace ss
 
 #endif
