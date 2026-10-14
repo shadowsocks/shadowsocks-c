@@ -57,6 +57,19 @@ function(ss_add_test name sources libs)
     endif()
 endfunction()
 
+# C++ core (src/core): header-only ownership and allocation primitives.
+foreach(core_test result pool buffer arena fixed_map ownership)
+    ss_add_test(test_core_${core_test} "test_core_${core_test}.cpp" "")
+endforeach()
+
+# C++ sources under src/ must not allocate on the heap (see the script).
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME check_no_heap
+        COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check_no_heap.py --self-test)
+    set_tests_properties(check_no_heap PROPERTIES LABELS "unit")
+endif()
+
 # test_base64 - no external deps
 ss_add_test(test_base64
     "test_base64.c;${PROJECT_SOURCE_DIR}/src/base64.c"
@@ -215,6 +228,15 @@ ss_add_test(test_resolv_async
     "ss_ev;ss_cares;ss_sodium")
 set_tests_properties(test_resolv_async PROPERTIES TIMEOUT 30)
 
+# Preloadable malloc counter for the allocation audit. It interposes the
+# system allocator, so it is only built where that is supported (glibc,
+# macOS) and never together with the sanitizers, which own malloc.
+include(CheckSymbolExists)
+check_symbol_exists(__GLIBC__ "stdlib.h" SS_HAVE_GLIBC)
+if(SS_BUILD_EXECUTABLES AND NOT ENABLE_SANITIZERS AND (APPLE OR SS_HAVE_GLIBC))
+    add_library(ss_alloc_audit SHARED alloc_audit/alloc_counter.c)
+endif()
+
 if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
@@ -233,6 +255,15 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/experiments/test_transport.py)
         set_tests_properties(test_experimental_transports PROPERTIES
             LABELS "integration" TIMEOUT 30)
+        # Steady-state allocation audit (report-only until the C++ relay
+        # lands; see tests/alloc_audit/measure_alloc.py).
+        if(TARGET ss_alloc_audit)
+            add_test(NAME alloc_audit_report
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/measure_alloc.py
+                        --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+                        --shim $<TARGET_FILE:ss_alloc_audit>)
+            set_tests_properties(alloc_audit_report PROPERTIES LABELS "integration" TIMEOUT 120)
+        endif()
         add_test(NAME test_printable_salt_interop
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/interop.py
                     --self --printable-salt --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
