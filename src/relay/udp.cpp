@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <ctime>
 #include <memory>
 
 #include <sodium.h>
