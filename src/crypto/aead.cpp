@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "crypto/aead.hpp"
+#include "crypto/mbedtls_compat.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -44,7 +45,7 @@ public:
     {
         std::array<std::uint8_t, kBlock> block{};
         if (key.size() > kBlock) {
-            mbedtls_sha1(key.data(), key.size(), block.data());
+            (void)mbed::sha1(key.data(), key.size(), block.data());
         } else if (!key.empty()) {
             std::memcpy(block.data(), key.data(), key.size());
         }
@@ -54,7 +55,7 @@ public:
         }
         sodium_memzero(block.data(), block.size());
         mbedtls_sha1_init(&inner_);
-        ok_ = mbedtls_sha1_starts(&inner_) == 0 && mbedtls_sha1_update(&inner_, ipad_.data(), kBlock) == 0;
+        ok_ = mbed::sha1_starts(&inner_) == 0 && mbed::sha1_update(&inner_, ipad_.data(), kBlock) == 0;
     }
     ~HmacSha1()
     {
@@ -67,17 +68,17 @@ public:
 
     void update(std::span<const std::uint8_t> data) noexcept
     {
-        ok_ = ok_ && mbedtls_sha1_update(&inner_, data.data(), data.size()) == 0;
+        ok_ = ok_ && mbed::sha1_update(&inner_, data.data(), data.size()) == 0;
     }
 
     bool finish(std::uint8_t (&mac)[kSize]) noexcept
     {
         std::uint8_t inner_hash[kSize];
-        ok_ = ok_ && mbedtls_sha1_finish(&inner_, inner_hash) == 0;
+        ok_ = ok_ && mbed::sha1_finish(&inner_, inner_hash) == 0;
         mbedtls_sha1_context outer;
         mbedtls_sha1_init(&outer);
-        ok_ = ok_ && mbedtls_sha1_starts(&outer) == 0 && mbedtls_sha1_update(&outer, opad_.data(), kBlock) == 0
-              && mbedtls_sha1_update(&outer, inner_hash, kSize) == 0 && mbedtls_sha1_finish(&outer, mac) == 0;
+        ok_ = ok_ && mbed::sha1_starts(&outer) == 0 && mbed::sha1_update(&outer, opad_.data(), kBlock) == 0
+              && mbed::sha1_update(&outer, inner_hash, kSize) == 0 && mbed::sha1_finish(&outer, mac) == 0;
         mbedtls_sha1_free(&outer);
         sodium_memzero(inner_hash, sizeof(inner_hash));
         return ok_;
