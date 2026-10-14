@@ -1,8 +1,10 @@
 # C++20 core and allocation policy
 
-Status: phase 1 of an incremental port. The ownership and allocation
-primitives in `src/core/` exist and are tested; no program code uses them yet.
-All binaries are still built from the C sources.
+Status: phases 1-3 of an incremental port. Every module of `src/` is
+compiled as C++20 (the code is still the C design, converted mechanically).
+The ownership and allocation primitives in `src/core/` and the event layer
+in `src/event/` exist and are tested; the relay engines that will use them
+are the next phases.
 
 ## Goals
 
@@ -47,12 +49,28 @@ All binaries are still built from the C sources.
 | `intrusive_list.hpp` | `IntrusiveList`/`ListNode`; replaces `ss_list`. Nodes unlink themselves when destroyed. |
 | `fixed_heap.hpp` | Bounded size-class allocator to hand to libuv, c-ares and Mbed TLS through their allocator hooks. |
 
+## Event layer (`src/event/loop.hpp`)
+
+`Loop`, `Poll`, `Timer`, `Signal` and `Async` wrap libuv handles that are
+embedded by value in their owner and call a member function of the owner
+chosen at compile time (declare that member before the handle). A `Poll`
+owns its socket and carries both read and write interest on one libuv
+handle; a handle closed from another callback gets no further events.
+Handles close into a `CloseGroup`, which signals completion after the last
+asynchronous close, so pooled owners implement `AsyncClosable::begin_close`
+by closing their handles into one. `DeadlineList` drives the idle timeouts
+of many owners from one timer. The `ss_event` C API remains for the code
+that still uses it and is removed with its last caller.
+
 ## Phases
 
-1. Build and core (this change): C++ enabled in CMake, `src/core/`, unit tests
-   (`test_core_*`), the no-heap lint and the allocation audit.
-2. Mechanical C-to-C++ conversion, leaf modules first.
-3. Event loop wrapper over libuv.
+1. Build and core (done): C++ enabled in CMake, `src/core/`, unit tests
+   (`test_core_*`), the no-heap lint, the C++ runtime check and the
+   allocation audit.
+2. Mechanical C-to-C++ conversion, leaf modules first (done). Converted
+   modules still allocate like the C code; `scripts/no_heap_baseline.txt`
+   ratchets that down as they are rewritten.
+3. Event loop wrapper over libuv (done: `src/event/`, `test_event_cpp`).
 4. Crypto: cipher contexts held by value, dispatched with `std::variant`.
 5. Services: cache, lists, resolver, ACL and configuration on the new primitives.
 6. One TCP relay engine shared by ss-tunnel, ss-local, ss-redir and ss-server.

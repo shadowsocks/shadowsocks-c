@@ -63,6 +63,11 @@ foreach(core_test result pool buffer arena fixed_map ownership)
     ss_strict_warnings(test_core_${core_test})
 endforeach()
 
+# C++ event layer (src/event) over libuv.
+ss_add_test(test_event_cpp "test_event_cpp.cpp" "ss_uv")
+ss_strict_warnings(test_event_cpp)
+set_tests_properties(test_event_cpp PROPERTIES TIMEOUT 30)
+
 # C++ sources under src/ must not allocate on the heap (see the script).
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)

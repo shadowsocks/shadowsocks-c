@@ -76,7 +76,7 @@ Uses **uncrustify** with the config at `.uncrustify.cfg`. Key settings: 4-space 
 
 - **clang-tidy**: config in `.clang-tidy`. The build exports `compile_commands.json` automatically. Run locally:
   ```bash
-  run-clang-tidy -quiet -p build '/(src/(core/|event/|relay/|crypto/|api/)?[^/]+\.(c|cpp)|tests/test_core_[^/]+\.cpp)$'
+  run-clang-tidy -quiet -p build '/(src/(core/|event/|relay/|crypto/|api/)?[^/]+\.(c|cpp)|tests/test_(core_[^/]+|event_cpp)\.cpp)$'
   ```
   On macOS with Homebrew LLVM, add `-extra-arg="-isysroot$(xcrun --show-sdk-path)"`. CI (`clang-tidy` job in `tests.yml`) enforces a warning-count ratchet via `MAX_WARNINGS` — lower it when fixing findings; never raise it without justification.
 - **No-heap lint**: `scripts/check_no_heap.py --self-test` (also a ctest) rejects heap allocation in C++ sources under `src/`.
