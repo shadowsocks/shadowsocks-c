@@ -40,7 +40,8 @@ def undefined_symbols(nm, path):
         line = line.strip()
         if not line or line.endswith(":"):
             continue  # archive member headers
-        symbols.add(line.split()[-1])
+        # glibc nm prints versioned names (__cxa_atexit@GLIBC_2.2.5).
+        symbols.add(line.split()[-1].split("@")[0])
     return symbols
 
 
