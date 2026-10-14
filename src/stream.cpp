@@ -504,8 +504,9 @@ stream_decrypt(buffer_t *ciphertext, cipher_ctx_t *cipher_ctx, size_t capacity)
             balloc(cipher_ctx->chunk, cipher->nonce_len);
         }
 
-        size_t left_len = min(cipher->nonce_len - cipher_ctx->chunk->len,
-                              ciphertext->len);
+        size_t left_len = cipher->nonce_len - cipher_ctx->chunk->len;
+        if (left_len > ciphertext->len)
+            left_len = ciphertext->len;
 
         if (left_len > 0) {
             memcpy(cipher_ctx->chunk->data + cipher_ctx->chunk->len, ciphertext->data, left_len);

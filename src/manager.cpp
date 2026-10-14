@@ -1042,7 +1042,7 @@ manager_recv_cb(SS_P_ ss_io *w, int revents)
         }
 
         size_t pos = strlen(buf);
-        strcpy(buf + max(pos - 1, 1), "\n]"); // Remove trailing ","
+        strcpy(buf + (pos > 2 ? pos - 1 : 1), "\n]"); // Remove trailing ","
         pos = strlen(buf);
         if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
             != pos) {

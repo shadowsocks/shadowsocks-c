@@ -31,10 +31,12 @@
 #include <netinet/in.h>
 #endif
 
-#if defined(HAVE_LINUX_TCP_H)
-#include <linux/tcp.h>
-#elif defined(HAVE_NETINET_TCP_H)
+/* netinet/tcp.h first: libuv includes it, and linux/tcp.h redefines its
+ * structures. */
+#if defined(HAVE_NETINET_TCP_H)
 #include <netinet/tcp.h>
+#elif defined(HAVE_LINUX_TCP_H)
+#include <linux/tcp.h>
 #elif defined(HAVE_NETDB_H)
 #include <netdb.h>
 #endif

@@ -69,8 +69,11 @@ typedef mbedtls_md_info_t digest_type_t;
 #define CRYPTO_NEED_MORE -1
 #define CRYPTO_OK         0
 
+/* Not for C++, where they would break <algorithm>. */
+#ifndef __cplusplus
 #define min(a, b) (((a) < (b)) ? (a) : (b))
 #define max(a, b) (((a) > (b)) ? (a) : (b))
+#endif
 
 #define SUBKEY_INFO "ss-subkey"
 #define IV_INFO "ss-iv"

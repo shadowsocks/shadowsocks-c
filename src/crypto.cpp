@@ -57,7 +57,7 @@ brealloc(buffer_t *ptr, size_t len, size_t capacity)
 {
     if (ptr == NULL)
         return -1;
-    size_t real_capacity = max(len, capacity);
+    size_t real_capacity = len > capacity ? len : capacity;
     if (ptr->capacity < real_capacity) {
         ptr->data     = (char *)ss_realloc(ptr->data, real_capacity);
         ptr->capacity = real_capacity;
@@ -171,7 +171,7 @@ crypto_init(const char *password, const char *key, const char *method)
                 .ctx_init    = &stream_ctx_init,
                 .ctx_release = &stream_ctx_release,
             };
-            memcpy(crypto, &tmp, sizeof(crypto_t));
+            memcpy((void *)crypto, &tmp, sizeof(crypto_t)); /* const members: copy the bytes */
             return crypto;
         }
 
@@ -200,7 +200,7 @@ crypto_init(const char *password, const char *key, const char *method)
                 .udp_session_release = aead_is_2022(cipher)
                                        ? &aead_2022_udp_session_release : NULL,
             };
-            memcpy(crypto, &tmp, sizeof(crypto_t));
+            memcpy((void *)crypto, &tmp, sizeof(crypto_t)); /* const members: copy the bytes */
             return crypto;
         }
     }
