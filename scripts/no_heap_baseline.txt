@@ -9,7 +9,7 @@ src/crypto.cpp 4
 src/ipset.cpp 3
 src/jconf.cpp 16
 src/json.cpp 2
-src/local.cpp 16
+src/local.cpp 2
 src/manager.cpp 14
 src/plugin.cpp 3
 src/process.cpp 26
