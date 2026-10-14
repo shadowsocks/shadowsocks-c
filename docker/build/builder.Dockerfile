@@ -1,8 +1,7 @@
-# Alpine with China mirror
+# Development image for building shadowsocks-c. The default bundled mode
+# builds every dependency from third_party/dist, so only a toolchain is
+# needed (Alpine's Mbed TLS 4 is not supported by system mode).
 FROM alpine
-MAINTAINER wener <wenermail@gmail.com>
 
-# Better for cache and dev
 RUN apk add --no-cache --virtual .build-deps \
-    alpine-sdk cmake \
-    linux-headers libev-dev libsodium-dev mbedtls-static mbedtls-dev pcre2-dev udns-dev
+    build-base cmake ninja python3 linux-headers
