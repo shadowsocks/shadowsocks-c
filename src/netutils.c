@@ -312,7 +312,7 @@ validate_hostname(const char *hostname, const int hostname_len)
     const char *label = hostname;
     while (label < hostname_end) {
         size_t label_len = hostname_end - label;
-        const char *next_dot = memchr(label, '.', label_len);
+        const char *next_dot = (const char *)memchr(label, '.', label_len);
         if (next_dot != NULL)
             label_len = next_dot - label;
 

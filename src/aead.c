@@ -335,7 +335,7 @@ aead_cipher_ctx_set_key(cipher_ctx_t *cipher_ctx, int enc)
         return;
     }
     if (mbedtls_cipher_setkey(cipher_ctx->evp, cipher_ctx->skey,
-                              cipher_ctx->cipher->key_len * 8, enc) != 0) {
+                              cipher_ctx->cipher->key_len * 8, (mbedtls_operation_t)enc) != 0) {
         FATAL("Cannot set mbed TLS cipher key");
     }
     if (mbedtls_cipher_reset(cipher_ctx->evp) != 0) {
@@ -360,11 +360,11 @@ aead_cipher_ctx_init(cipher_ctx_t *cipher_ctx, int method, int enc)
     const cipher_kt_t *cipher = aead_get_cipher_type(method);
 
     if (method == AES256GCM && crypto_aead_aes256gcm_is_available()) {
-        cipher_ctx->aes256gcm_ctx = ss_aligned_malloc(sizeof(aes256gcm_ctx));
+        cipher_ctx->aes256gcm_ctx = (aes256gcm_ctx *)ss_aligned_malloc(sizeof(aes256gcm_ctx));
         memset(cipher_ctx->aes256gcm_ctx, 0, sizeof(aes256gcm_ctx));
     } else {
         cipher_ctx->aes256gcm_ctx = NULL;
-        cipher_ctx->evp           = ss_malloc(sizeof(cipher_evp_t));
+        cipher_ctx->evp           = (cipher_evp_t *)ss_malloc(sizeof(cipher_evp_t));
         memset(cipher_ctx->evp, 0, sizeof(cipher_evp_t));
         cipher_evp_t *evp = cipher_ctx->evp;
         mbedtls_cipher_init(evp);

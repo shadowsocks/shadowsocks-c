@@ -283,7 +283,7 @@ read_jconf(const char *file)
         FATAL("Too large config file.");
     }
 
-    buf = ss_malloc(pos + 1);
+    buf = (char *)ss_malloc(pos + 1);
     if (buf == NULL) {
         FATAL("No enough memory.");
     }

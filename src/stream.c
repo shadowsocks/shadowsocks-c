@@ -211,7 +211,7 @@ stream_cipher_ctx_init(cipher_ctx_t *ctx, int method, int enc)
     const char *ciphername    = supported_stream_ciphers[method];
     const cipher_kt_t *cipher = stream_get_cipher_type(method);
 
-    ctx->evp = ss_malloc(sizeof(cipher_evp_t));
+    ctx->evp = (cipher_evp_t *)ss_malloc(sizeof(cipher_evp_t));
     memset(ctx->evp, 0, sizeof(cipher_evp_t));
     cipher_evp_t *evp = ctx->evp;
 
@@ -274,7 +274,7 @@ cipher_ctx_set_nonce(cipher_ctx_t *cipher_ctx, uint8_t *nonce, size_t nonce_len,
         LOGE("cipher_ctx_set_nonce(): Cipher context is null");
         return;
     }
-    if (mbedtls_cipher_setkey(evp, true_key, cipher->key_len * 8, enc) != 0) {
+    if (mbedtls_cipher_setkey(evp, true_key, cipher->key_len * 8, (mbedtls_operation_t)enc) != 0) {
         mbedtls_cipher_free(evp);
         FATAL("Cannot set mbed TLS cipher key");
     }

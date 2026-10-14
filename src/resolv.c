@@ -94,7 +94,7 @@ static struct ss_loop *default_loop;
 enum {
     MODE_IPV4_FIRST = 0,
     MODE_IPV6_FIRST = 1
-} RESOLV_MODE;
+};
 
 static int resolv_mode = MODE_IPV4_FIRST;
 
@@ -207,7 +207,7 @@ resolv_start(const char *hostname, uint16_t port,
     /*
      * Wrap c-ares's call back in our own
      */
-    struct resolv_query *query = ss_malloc(sizeof(struct resolv_query));
+    struct resolv_query *query = (struct resolv_query *)ss_malloc(sizeof(struct resolv_query));
 
     memset(query, 0, sizeof(struct resolv_query));
 
@@ -254,7 +254,7 @@ dns_query_v4_cb(void *arg, int status, int timeouts, struct hostent *he)
         n++;
 
     if (n > 0) {
-        struct sockaddr **new_responses = ss_realloc(query->responses,
+        struct sockaddr **new_responses = (struct sockaddr **)ss_realloc(query->responses,
                                                      (query->response_count + n)
                                                      * sizeof(struct sockaddr *));
 
@@ -264,7 +264,7 @@ dns_query_v4_cb(void *arg, int status, int timeouts, struct hostent *he)
             query->responses = new_responses;
 
             for (i = 0; i < n; i++) {
-                struct sockaddr_in *sa = ss_malloc(sizeof(struct sockaddr_in));
+                struct sockaddr_in *sa = (struct sockaddr_in *)ss_malloc(sizeof(struct sockaddr_in));
                 memset(sa, 0, sizeof(struct sockaddr_in));
                 sa->sin_family = AF_INET;
                 sa->sin_port   = query->port;
@@ -316,7 +316,7 @@ dns_query_v6_cb(void *arg, int status, int timeouts, struct hostent *he)
         n++;
 
     if (n > 0) {
-        struct sockaddr **new_responses = ss_realloc(query->responses,
+        struct sockaddr **new_responses = (struct sockaddr **)ss_realloc(query->responses,
                                                      (query->response_count + n)
                                                      * sizeof(struct sockaddr *));
 
@@ -326,7 +326,7 @@ dns_query_v6_cb(void *arg, int status, int timeouts, struct hostent *he)
             query->responses = new_responses;
 
             for (i = 0; i < n; i++) {
-                struct sockaddr_in6 *sa = ss_malloc(sizeof(struct sockaddr_in6));
+                struct sockaddr_in6 *sa = (struct sockaddr_in6 *)ss_malloc(sizeof(struct sockaddr_in6));
                 memset(sa, 0, sizeof(struct sockaddr_in6));
                 sa->sin6_family = AF_INET6;
                 sa->sin6_port   = query->port;
@@ -472,7 +472,7 @@ resolv_sock_state_cb(void *data, ares_socket_t s, int read, int write)
         return;
     }
     if (!node) {
-        node = ss_malloc(sizeof(*node));
+        node = (struct resolv_io *)ss_malloc(sizeof(*node));
         node->next = NULL;
         *entry = node;
         ss_io_init(&node->io, resolv_sock_cb, (int)s, events);

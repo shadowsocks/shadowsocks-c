@@ -246,7 +246,7 @@ ss2022_build_req_varhdr(const uint8_t *first, size_t first_len,
     }
 
     size_t total = addr_len + 2 + pad_len + payload_len;
-    uint8_t *buf = ss_malloc(total);
+    uint8_t *buf = (uint8_t *)ss_malloc(total);
 
     memcpy(buf, first, addr_len);
     store16_be(buf + addr_len, pad_len);
@@ -277,6 +277,8 @@ ss2022_emit_header(cipher_ctx_t *ctx, buffer_t *out, size_t *out_len,
     size_t body_len   = 0;
     int body_owned    = 0;
     int rc            = CRYPTO_ERROR;
+    size_t o;
+    int n;
 
     if (ctx->role == CRYPTO_ROLE_CLIENT) {
         if (ss2022_build_req_varhdr(first, first_len, &body, &body_len)
@@ -322,9 +324,9 @@ ss2022_emit_header(cipher_ctx_t *ctx, buffer_t *out, size_t *out_len,
              + body_len + SS2022_TAG_LEN, capacity);
 
     memcpy(out->data, ctx->salt, salt_len);
-    size_t o = salt_len;
+    o = salt_len;
 
-    int n = ss2022_seal(ctx, (uint8_t *)out->data + o, fixed, fixed_len);
+    n = ss2022_seal(ctx, (uint8_t *)out->data + o, fixed, fixed_len);
     if (n < 0)
         goto done;
     o += n;
@@ -595,7 +597,7 @@ ss2022_tcp_decrypt(buffer_t *ciphertext, cipher_ctx_t *ctx, size_t capacity)
             return CRYPTO_NEED_MORE;
         }
 
-        uint8_t *body = ss_malloc(want);
+        uint8_t *body = (uint8_t *)ss_malloc(want);
         int n = ss2022_open(ctx, body,
                             (uint8_t *)chunk->data + chunk->idx, need);
         if (n < 0) {

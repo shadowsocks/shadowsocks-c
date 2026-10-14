@@ -179,7 +179,7 @@ window_update(ss2022_udp_session_t *s, uint64_t id)
 static ss2022_udp_session_t *
 session_new(cipher_t *cipher)
 {
-    ss2022_udp_session_t *s = ss_malloc(sizeof(ss2022_udp_session_t));
+    ss2022_udp_session_t *s = (ss2022_udp_session_t *)ss_malloc(sizeof(ss2022_udp_session_t));
     memset(s, 0, sizeof(ss2022_udp_session_t));
     s->cipher = cipher;
     return s;
@@ -285,7 +285,7 @@ body_seal(const cipher_t *cipher, const uint8_t *key,
     tmp_ctx.cipher = &tmp_cipher;
 
     /* Reuse the shared one-shot helper with an mbedTLS GCM context. */
-    tmp_ctx.evp = ss_malloc(sizeof(cipher_evp_t));
+    tmp_ctx.evp = (cipher_evp_t *)ss_malloc(sizeof(cipher_evp_t));
     memset(tmp_ctx.evp, 0, sizeof(cipher_evp_t));
     mbedtls_cipher_init(tmp_ctx.evp);
     const cipher_kt_t *kt = mbedtls_cipher_info_from_string(
@@ -327,7 +327,7 @@ body_open(const cipher_t *cipher, const uint8_t *key,
     memset(&tmp_ctx, 0, sizeof(tmp_ctx));
     tmp_ctx.cipher = &tmp_cipher;
 
-    tmp_ctx.evp = ss_malloc(sizeof(cipher_evp_t));
+    tmp_ctx.evp = (cipher_evp_t *)ss_malloc(sizeof(cipher_evp_t));
     memset(tmp_ctx.evp, 0, sizeof(cipher_evp_t));
     mbedtls_cipher_init(tmp_ctx.evp);
     const cipher_kt_t *kt = mbedtls_cipher_info_from_string(
@@ -377,7 +377,7 @@ aead_2022_encrypt_udp(buffer_t *plaintext, cipher_t *cipher, size_t capacity,
     size_t hdr_len = SS2022_UDP_MIN_HDR + extra;
     size_t body_len = hdr_len + plaintext->len;
 
-    uint8_t *body = ss_malloc(body_len);
+    uint8_t *body = (uint8_t *)ss_malloc(body_len);
     size_t o      = 0;
 
     body[o++] = is_server ? SS2022_UDP_TYPE_SERVER : SS2022_UDP_TYPE_CLIENT;
@@ -407,7 +407,7 @@ aead_2022_encrypt_udp(buffer_t *plaintext, cipher_t *cipher, size_t capacity,
          * main header || payload)
          */
         size_t merged_len = SS2022_UDP_SEP_HDR_LEN + body_len;
-        uint8_t *merged   = ss_malloc(merged_len);
+        uint8_t *merged   = (uint8_t *)ss_malloc(merged_len);
         memcpy(merged, s->tx_session_id, SS2022_SESSION_ID_LEN);
         store64_be(merged + SS2022_SESSION_ID_LEN, s->tx_packet_id);
         memcpy(merged + SS2022_UDP_SEP_HDR_LEN, body, body_len);

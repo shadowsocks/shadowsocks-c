@@ -137,7 +137,7 @@ start_obfsproxy(const char *plugin,
     ss_process_arg(sub, "--data-dir");
     buf_size = 20 + strlen(plugin) + strlen(remote_host)
                + strlen(remote_port) + strlen(local_host) + strlen(local_port);
-    buf = ss_malloc(buf_size);
+    buf = (char *)ss_malloc(buf_size);
     snprintf(buf, buf_size, TEMPDIR "%s_%s:%s_%s:%s", plugin,
              remote_host, remote_port, local_host, local_port);
     ss_process_arg(sub, buf);
