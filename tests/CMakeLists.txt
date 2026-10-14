@@ -307,3 +307,15 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
             LABELS "integration" TIMEOUT 90)
     endif()
 endif()
+
+# The zero-allocation checks hold for the bundled Mbed TLS, which is built
+# with MBEDTLS_BLOCK_CIPHER_C; a system Mbed TLS may allocate during GCM key
+# setup. Keep those tests visible but disabled in system-dependency builds.
+if(NOT SS_DEPENDENCY_MODE STREQUAL "bundled")
+    get_property(ss_all_tests DIRECTORY PROPERTY TESTS)
+    foreach(ss_test IN LISTS ss_all_tests)
+        if(ss_test MATCHES "^alloc_steady_(crypto|programs)")
+            set_tests_properties(${ss_test} PROPERTIES DISABLED TRUE)
+        endif()
+    endforeach()
+endif()
