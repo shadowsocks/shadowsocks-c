@@ -327,6 +327,10 @@ test_udp_replay_rejected(const char *method)
 
     aead_set_role(CRYPTO_ROLE_SERVER);
     assert(c->decrypt_udp(&buf, c->cipher, 2048, &server_session) == CRYPTO_OK);
+    /* A rejected packet must not publish a session into a fresh relay slot. */
+    void *rejected_session = NULL;
+    assert(c->decrypt_udp(&copy, c->cipher, 2048, &rejected_session) == CRYPTO_ERROR);
+    assert(rejected_session == NULL);
     /* the very same packet again must be refused */
     assert(c->decrypt_udp(&copy, c->cipher, 2048, &server_session) == CRYPTO_ERROR);
 
@@ -334,6 +338,83 @@ test_udp_replay_rejected(const char *method)
     bfree(&copy);
     c->udp_session_release(client_session);
     c->udp_session_release(server_session);
+    aead_set_role(CRYPTO_ROLE_CLIENT);
+    free_crypto(c);
+}
+
+/* Encrypt one client packet into buf and hand it to the server's slot. */
+static void
+client_to_server(crypto_t *c, buffer_t *buf, const uint8_t *pkt, size_t len,
+                 void **client_session, void **server_session)
+{
+    memcpy(buf->data, pkt, len);
+    buf->len = len;
+    aead_set_role(CRYPTO_ROLE_CLIENT);
+    assert(c->encrypt_udp(buf, c->cipher, 2048, client_session) == CRYPTO_OK);
+    aead_set_role(CRYPTO_ROLE_SERVER);
+    assert(c->decrypt_udp(buf, c->cipher, 2048, server_session) == CRYPTO_OK);
+    assert(buf->len == len && memcmp(buf->data, pkt, len) == 0);
+}
+
+/*
+ * A relay context keeps its server session across table eviction. Flooding
+ * the table with fresh client session IDs used to free the session behind
+ * the relay's back, so the reply path encrypted with freed memory.
+ */
+static void
+test_udp_session_survives_table_eviction(const char *method)
+{
+    static const uint8_t pkt[] = { 0x01, 8, 8, 8, 8, 0x00, 0x35, 0x42 };
+
+    crypto_t *c = make_crypto(method);
+    void *client_session = NULL;
+    void *server_session = NULL;
+
+    buffer_t buf;
+    memset(&buf, 0, sizeof(buf));
+    balloc(&buf, 2048);
+
+    client_to_server(c, &buf, pkt, sizeof(pkt), &client_session, &server_session);
+    assert(server_session != NULL);
+    void *first = server_session;
+    void *shared_session = NULL;
+    client_to_server(c, &buf, pkt, sizeof(pkt), &client_session, &shared_session);
+    assert(shared_session == first);
+    /* Reattaching the same slot must not acquire an extra reference. */
+    client_to_server(c, &buf, pkt, sizeof(pkt), &client_session, &server_session);
+    assert(server_session == first);
+
+    /* Each new client session ID inserts a table entry; overflow evicts ours. */
+    for (int i = 0; i < AEAD_2022_UDP_SESSION_TABLE_CAP + 1; i++) {
+        void *other_client = NULL, *other_server = NULL;
+        client_to_server(c, &buf, pkt, sizeof(pkt), &other_client, &other_server);
+        assert(other_server != NULL && other_server != first);
+        c->udp_session_release(other_client);
+        c->udp_session_release(other_server);
+    }
+
+    /* Dropping one relay owner must leave the other one usable. */
+    c->udp_session_release(shared_session);
+
+    /* The reply must still encrypt with the evicted session and verify. */
+    memcpy(buf.data, pkt, sizeof(pkt));
+    buf.len = sizeof(pkt);
+    aead_set_role(CRYPTO_ROLE_SERVER);
+    assert(c->encrypt_udp(&buf, c->cipher, 2048, &server_session) == CRYPTO_OK);
+    assert(server_session == first);
+    aead_set_role(CRYPTO_ROLE_CLIENT);
+    assert(c->decrypt_udp(&buf, c->cipher, 2048, &client_session) == CRYPTO_OK);
+    assert(buf.len == sizeof(pkt) && memcmp(buf.data, pkt, sizeof(pkt)) == 0);
+
+    /* The client's next packet re-creates a table entry and swaps the slot. */
+    client_to_server(c, &buf, pkt, sizeof(pkt), &client_session, &server_session);
+    assert(server_session != NULL && server_session != first);
+
+    /* Releasing the slot after eviction must neither leak nor double free. */
+    c->udp_session_release(server_session);
+    c->udp_session_release(client_session);
+
+    bfree(&buf);
     aead_set_role(CRYPTO_ROLE_CLIENT);
     free_crypto(c);
 }
@@ -386,6 +467,7 @@ main(void)
         test_tcp_tamper_detection(m);
         test_udp_roundtrip(m);
         test_udp_replay_rejected(m);
+        test_udp_session_survives_table_eviction(m);
     }
 
     return 0;

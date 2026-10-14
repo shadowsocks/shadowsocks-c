@@ -52,6 +52,7 @@
 #include "netutils.h"
 #include "cache.h"
 #include "udprelay.h"
+#include "ss_ref.h"
 #include "ss_windows.h"
 
 #ifdef MODULE_REMOTE
@@ -628,6 +629,7 @@ close_and_free_query(SS_P_ struct query_ctx *ctx)
             bfree(ctx->buf);
             ss_free(ctx->buf);
         }
+        ss_ptr_reset(&ctx->udp_session, ctx->server_ctx->crypto->udp_session_release);
         ss_free(ctx);
     }
 }
@@ -641,11 +643,8 @@ close_and_free_remote(SS_P_ remote_ctx_t *ctx)
         ss_timer_stop(SS_A_ & ctx->watcher);
         ss_io_stop(SS_A_ & ctx->io);
         ss_socket_close(ctx->fd);
-        if (ctx->udp_session != NULL
-            && ctx->server_ctx != NULL
-            && ctx->server_ctx->crypto->udp_session_release != NULL) {
-            ctx->server_ctx->crypto->udp_session_release(ctx->udp_session);
-        }
+        if (ctx->server_ctx != NULL)
+            ss_ptr_reset(&ctx->udp_session, ctx->server_ctx->crypto->udp_session_release);
         ss_free(ctx);
     }
 }
@@ -735,6 +734,8 @@ resolv_cb(struct sockaddr *addr, void *data)
         }
 
         if (remote_ctx != NULL) {
+            ss_ptr_move(&remote_ctx->udp_session, &query_ctx->udp_session,
+                        query_ctx->server_ctx->crypto->udp_session_release);
             if (addr->sa_family == AF_INET)
                 memcpy(&remote_ctx->dst_addr, addr, sizeof(struct sockaddr_in));
             else
@@ -1018,6 +1019,9 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
 
     socklen_t src_addr_len = sizeof(struct sockaddr_storage);
     unsigned int offset    = 0;
+#ifdef MODULE_REMOTE
+    void *udp_session = NULL;
+#endif
 
 #ifdef MODULE_REDIR
     char control_buffer[64] = { 0 };
@@ -1083,8 +1087,6 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
      * decryption, so the crypto layer resolves the session itself and hands
      * it back here to be attached to the relay context.
      */
-    void *udp_session;
-    udp_session = NULL;
     int err;
     err = server_ctx->crypto->decrypt_udp != NULL
               ? server_ctx->crypto->decrypt_udp(buf, server_ctx->crypto->cipher,
@@ -1475,9 +1477,9 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
         }
     }
 
-    if (remote_ctx != NULL) {
-        // Attach the AEAD-2022 session so replies are encrypted with it
-        remote_ctx->udp_session = udp_session;
+    if (remote_ctx != NULL && !need_query) {
+        ss_ptr_move(&remote_ctx->udp_session, &udp_session,
+                    server_ctx->crypto->udp_session_release);
     }
 
     if (remote_ctx != NULL && !need_query) {
@@ -1506,6 +1508,8 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
         struct query_ctx *query_ctx = new_query_ctx(buf->data + addr_header_len,
                                                     buf->len - addr_header_len);
         query_ctx->server_ctx      = server_ctx;
+        ss_ptr_move(&query_ctx->udp_session, &udp_session,
+                    server_ctx->crypto->udp_session_release);
         query_ctx->addr_header_len = addr_header_len;
         query_ctx->src_addr        = src_addr;
         memcpy(query_ctx->addr_header, addr_header, addr_header_len);
@@ -1525,6 +1529,9 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
 #endif
 
 CLEAN_UP:
+#ifdef MODULE_REMOTE
+    ss_ptr_reset(&udp_session, server_ctx->crypto->udp_session_release);
+#endif
     bfree(buf);
     ss_free(buf);
 }

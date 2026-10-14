@@ -75,6 +75,7 @@ typedef struct query_ctx {
     char addr_header[MAX_ADDR_HEADER_SIZE];
     struct server_ctx *server_ctx;
     struct remote_ctx *remote_ctx;
+    void *udp_session; /* Owned until transferred to the resolved relay. */
 } query_ctx_t;
 #endif
 

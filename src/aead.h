@@ -52,6 +52,13 @@ cipher_t *aead_init(const char *pass, const char *key, const char *method);
 int aead_is_2022(const cipher_t *cipher);
 void aead_set_role(int role); /* override compile-time default; used by tests */
 
+/*
+ * Server-side UDP session table size. Inserting beyond it evicts the least
+ * recently used session; a relay context that still references the evicted
+ * session keeps it alive until it releases it.
+ */
+#define AEAD_2022_UDP_SESSION_TABLE_CAP 4096
+
 int aead_2022_encrypt_udp(buffer_t *, cipher_t *, size_t, void **);
 int aead_2022_decrypt_udp(buffer_t *, cipher_t *, size_t, void **);
 void aead_2022_udp_session_release(void *);

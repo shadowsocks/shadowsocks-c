@@ -95,6 +95,9 @@ if(Python3_Interpreter_FOUND)
     endif()
 endif()
 
+# Shared-reference ownership and consuming pointer moves.
+ss_add_test(test_ref "test_ref.c" "")
+
 # test_base64 - no external deps
 ss_add_test(test_base64
     "test_base64.c;${PROJECT_SOURCE_DIR}/src/base64.cpp"
@@ -290,6 +293,18 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
                     --bin-dir ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
         set_tests_properties(test_cli PROPERTIES LABELS "integration" TIMEOUT 60)
         if(UNIX)
+            add_executable(udp_session_eviction_client
+                udp_session_eviction_client.c ${SS_CRYPTO_TEST_SOURCES})
+            target_compile_definitions(udp_session_eviction_client PRIVATE HAVE_CONFIG_H)
+            target_compile_options(udp_session_eviction_client PRIVATE -UNDEBUG)
+            target_link_libraries(udp_session_eviction_client
+                ${TEST_CRYPTO_LIBS} ${SS_MATH_LIBRARY})
+            ss_project_options(udp_session_eviction_client)
+            add_test(NAME test_udp_session_eviction
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_udp_session_eviction.py
+                        --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+            set_tests_properties(test_udp_session_eviction PROPERTIES
+                LABELS "integration" TIMEOUT 300)
             add_test(NAME test_experiment_supervisor
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/experiments/test_supervisor.py
                         --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})

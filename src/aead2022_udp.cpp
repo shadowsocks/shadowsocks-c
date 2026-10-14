@@ -41,6 +41,7 @@
 #include "aead_internal.h"
 #include "cache.h"
 #include "utils.h"
+#include "ss_ref.h"
 
 #define SS2022_UDP_TYPE_CLIENT   0
 #define SS2022_UDP_TYPE_SERVER   1
@@ -59,6 +60,7 @@
  * peer session we are receiving from.
  */
 typedef struct ss2022_udp_session {
+    ss_ref_t ref; /* Table and relay slots independently own this session. */
     cipher_t *cipher;
 
     /* outgoing */
@@ -78,12 +80,6 @@ typedef struct ss2022_udp_session {
     uint8_t peer_session_id[SS2022_SESSION_ID_LEN];
     int peer_session_known;
 
-    /*
-     * Server sessions are owned by the session table (they are looked up by
-     * client session ID, which is only known after decryption); client
-     * sessions are owned by the caller's slot.
-     */
-    int table_owned;
 } ss2022_udp_session_t;
 
 /*
@@ -91,19 +87,24 @@ typedef struct ss2022_udp_session {
  * requires servers to route by session ID rather than source address, so
  * that sessions survive client network changes.
  */
-#define SS2022_SESSION_TABLE_CAP 4096
+#define SS2022_SESSION_TABLE_CAP AEAD_2022_UDP_SESSION_TABLE_CAP
 #define SS2022_SESSION_TTL       600
 
 static struct cache *ss2022_sessions = NULL;
 
 static void
+session_destroy(void *object)
+{
+    sodium_memzero(object, sizeof(ss2022_udp_session_t));
+    ss_free(object);
+}
+
+/* Cache callback: drop the table's reference when an entry is evicted. */
+static void
 session_free_cb(void *key, void *element)
 {
     (void)key;
-    if (element != NULL) {
-        sodium_memzero(element, sizeof(ss2022_udp_session_t));
-        ss_free(element);
-    }
+    ss_ref_release(element);
 }
 
 static void
@@ -181,7 +182,8 @@ session_new(cipher_t *cipher)
 {
     ss2022_udp_session_t *s = (ss2022_udp_session_t *)ss_malloc(sizeof(ss2022_udp_session_t));
     memset(s, 0, sizeof(ss2022_udp_session_t));
-    s->cipher = cipher;
+    s->cipher   = cipher;
+    ss_ref_init(s, session_destroy);
     return s;
 }
 
@@ -214,20 +216,20 @@ session_by_id(const uint8_t *session_id, cipher_t *cipher)
 
     cache_clear(ss2022_sessions, SS2022_SESSION_TTL);
 
-    s              = session_new(cipher);
-    s->table_owned = 1;
-    cache_insert(ss2022_sessions, (char *)session_id, SS2022_SESSION_ID_LEN, s);
+    s = session_new(cipher);
+    /* Transfer the initial reference to the table on successful insertion. */
+    if (cache_insert(ss2022_sessions, (char *)session_id,
+                     SS2022_SESSION_ID_LEN, s) != 0) {
+        ss_ref_release(s);
+        return NULL;
+    }
     return s;
 }
 
 void
 aead_2022_udp_session_release(void *slot)
 {
-    ss2022_udp_session_t *s = (ss2022_udp_session_t *)slot;
-    if (s == NULL || s->table_owned)
-        return;  /* table-owned sessions are freed when the table evicts them */
-    sodium_memzero(s, sizeof(ss2022_udp_session_t));
-    ss_free(s);
+    ss_ref_release(slot);
 }
 
 static int
@@ -531,7 +533,6 @@ aead_2022_decrypt_udp(buffer_t *ciphertext, cipher_t *cipher, size_t capacity,
         s = session_by_id(session_id, cipher);
         if (s == NULL)
             return CRYPTO_ERROR;
-        *slot = s;  /* the reply path encrypts with this same session */
     } else {
         s = session_get(slot, cipher);
     }
@@ -585,6 +586,8 @@ aead_2022_decrypt_udp(buffer_t *ciphertext, cipher_t *cipher, size_t capacity,
     if (is_server) {
         memcpy(s->peer_session_id, session_id, SS2022_SESSION_ID_LEN);
         s->peer_session_known = 1;
+        /* Publish only validated packets and retain the reply session. */
+        ss_ref_assign(slot, s);
     }
 
     size_t payload_len = plen - o;
