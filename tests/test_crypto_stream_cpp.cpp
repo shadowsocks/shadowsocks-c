@@ -2,6 +2,7 @@
 // The C++ stream codecs (src/crypto/stream.hpp) differentially against the C
 // implementation in stream.cpp, plus replay handling and a zero-allocation
 // steady phase.
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <vector>
