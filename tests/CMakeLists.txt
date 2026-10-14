@@ -192,7 +192,7 @@ set(TEST_JCONF_LIBS
     ss_cares
 )
 ss_add_test(test_jconf
-    "test_jconf.c;${PROJECT_SOURCE_DIR}/src/jconf.cpp;${PROJECT_SOURCE_DIR}/src/json.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp;${PROJECT_SOURCE_DIR}/src/netutils.cpp"
+    "test_jconf_cpp.cpp;${PROJECT_SOURCE_DIR}/src/jconf.cpp;${PROJECT_SOURCE_DIR}/src/json.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp;${PROJECT_SOURCE_DIR}/src/netutils.cpp"
     "${TEST_JCONF_LIBS};${SS_MATH_LIBRARY}")
 
 # The original C cipher implementation, kept under tests/reference as an
