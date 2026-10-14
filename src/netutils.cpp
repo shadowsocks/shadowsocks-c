@@ -341,7 +341,7 @@ validate_hostname(const char *hostname, const int hostname_len)
 int
 is_ipv6only(ss_addr_t *servers, size_t server_num, int ipv6first)
 {
-    int i;
+    size_t i;
     for (i = 0; i < server_num; i++) {
         struct sockaddr_storage storage;
         memset(&storage, 0, sizeof(struct sockaddr_storage));

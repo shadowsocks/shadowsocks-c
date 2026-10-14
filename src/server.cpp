@@ -226,7 +226,7 @@ stat_update_cb(SS_P_ ss_timer *watcher, int revents)
         strncpy(svaddr.sun_path, manager_addr, sizeof(svaddr.sun_path) - 1);
 
         if (sendto(sfd, resp, strlen(resp) + 1, 0, (struct sockaddr *)&svaddr,
-                   sizeof(struct sockaddr_un)) != msgLen) {
+                   sizeof(struct sockaddr_un)) != (ssize_t)msgLen) {
             ERROR("stat_sendto");
             ss_socket_close(sfd);
             return;

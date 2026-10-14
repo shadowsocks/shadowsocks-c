@@ -605,7 +605,7 @@ get_server(char *buf, int len)
     int valid = 1;
     if (obj->type == json_object) {
         int i = 0;
-        for (i = 0; i < obj->u.object.length; i++) {
+        for (i = 0; (unsigned int)i < obj->u.object.length; i++) {
             char *name        = obj->u.object.values[i].name;
             json_value *value = obj->u.object.values[i].value;
             if (strcmp(name, "server_port") == 0) {
@@ -699,7 +699,7 @@ parse_traffic(char *buf, int len, char *port, uint64_t *traffic)
 
     if (obj->type == json_object) {
         int i = 0;
-        for (i = 0; i < obj->u.object.length; i++) {
+        for (i = 0; (unsigned int)i < obj->u.object.length; i++) {
             char *name        = obj->u.object.values[i].name;
             json_value *value = obj->u.object.values[i].value;
             if (value->type == json_integer) {
@@ -1032,7 +1032,7 @@ manager_recv_cb(SS_P_ ss_io *w, int revents)
             }
             if (pos >= BUF_SIZE - entry_pos) {
                 if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
-                    != pos) {
+                    != (ssize_t)pos) {
                     ERROR("list_sendto");
                 }
                 memset(buf, 0, BUF_SIZE);
@@ -1045,7 +1045,7 @@ manager_recv_cb(SS_P_ ss_io *w, int revents)
         strcpy(buf + (pos > 2 ? pos - 1 : 1), "\n]"); // Remove trailing ","
         pos = strlen(buf);
         if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
-            != pos) {
+            != (ssize_t)pos) {
             ERROR("list_sendto");
         }
     } else if (strcmp(action, "remove") == 0) {
@@ -1107,7 +1107,7 @@ manager_recv_cb(SS_P_ ss_io *w, int revents)
                     goto ERROR_MSG;
                 }
                 if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
-                    != pos) {
+                    != (ssize_t)pos) {
                     ERROR("ping_sendto");
                 }
                 memset(buf, 0, BUF_SIZE);
@@ -1132,7 +1132,7 @@ manager_recv_cb(SS_P_ ss_io *w, int revents)
         }
 
         if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
-            != pos) {
+            != (ssize_t)pos) {
             ERROR("ping_sendto");
         }
     }
