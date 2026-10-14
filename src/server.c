@@ -2588,6 +2588,12 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         }
     }
 
+#ifdef __MINGW32__
+    if (manager_addr != NULL) {
+        LOGE("--manager-address is not supported on Windows; ignored");
+    }
+#endif
+
 #ifndef __MINGW32__
     if (manager_addr != NULL) {
         ss_timer_init(&stat_update_watcher, stat_update_cb, UPDATE_INTERVAL, UPDATE_INTERVAL);

@@ -2,7 +2,7 @@ ARG ALPINE_IMAGE=alpine:3.24
 FROM ${ALPINE_IMAGE} AS build
 ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
 RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
- && apk add --no-cache clang lld make musl-dev compiler-rt libstdc++-dev cmake linux-headers python3 binutils file
+ && apk add --no-cache clang lld make musl-dev compiler-rt llvm-libunwind-static g++ libstdc++-dev cmake linux-headers python3 binutils file
 ENV CC=clang CXX=clang++
 WORKDIR /src
 COPY . .
@@ -11,7 +11,7 @@ RUN --network=none cmake -S . -B /build \
       -DCMAKE_BUILD_TYPE=Release \
       -DSS_DEPENDENCY_MODE=bundled -DWITH_STATIC=ON \
       -DSS_BUILD_STATIC_LIBRARY=OFF -DSS_BUILD_SHARED_LIBRARY=OFF \
-      -DSS_MINIMAL=${SS_MINIMAL} -DCMAKE_EXE_LINKER_FLAGS="-static -fuse-ld=lld --rtlib=compiler-rt" \
+      -DSS_MINIMAL=${SS_MINIMAL} -DCMAKE_EXE_LINKER_FLAGS="-static -fuse-ld=lld --rtlib=compiler-rt --unwindlib=libunwind" \
       -DCMAKE_INSTALL_PREFIX=/out \
  && cmake --build /build --parallel 4 \
  && ctest --test-dir /build -L 'unit|vendor' --output-on-failure --no-tests=error \

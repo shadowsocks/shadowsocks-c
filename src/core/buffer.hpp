@@ -33,8 +33,6 @@ class FixedBuffer {
     static_assert(N > 0 && N <= UINT32_MAX);
 
 public:
-    static constexpr std::size_t kCapacity = N;
-
     constexpr std::size_t capacity() const noexcept { return N; }
     constexpr std::size_t size() const noexcept { return len_; }
     constexpr bool empty() const noexcept { return len_ == 0; }
