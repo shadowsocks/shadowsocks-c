@@ -296,7 +296,7 @@ ss_add_test(test_acl_literal
 ss_strict_warnings(
     test_acl_cpp.cpp test_acl_literal_cpp.cpp test_aead2022_cpp.cpp test_base64_cpp.cpp
     test_buffer_cpp.cpp test_cache_reference_cpp.cpp test_crypto_cpp.cpp test_ipset_cpp.cpp
-    test_json_cpp.cpp test_netutils_cpp.cpp test_ppbloom_cpp.cpp test_process_cpp.cpp
+    test_jconf_cpp.cpp test_json_cpp.cpp test_netutils_cpp.cpp test_ppbloom_cpp.cpp test_process_cpp.cpp
     test_ref_cpp.cpp test_ssurl_cpp.cpp test_utils_cpp.cpp)
 
 

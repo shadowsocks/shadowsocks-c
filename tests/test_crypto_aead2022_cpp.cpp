@@ -398,8 +398,9 @@ void test_methods()
     salt_pool();
     SS_CHECK(!sc::find_aead2022("aes-256-gcm"));
     auto spec = sc::find_aead2022("2022-blake3-aes-256-gcm");
-    SS_CHECK(!sc::Psk::from_base64(*spec, kPsk16)); // too short
-    SS_CHECK(!sc::Psk::from_base64(*spec, "not base64"));
+    SS_CHECK(spec.has_value());
+    SS_CHECK(!sc::Psk::from_base64(spec.value(), kPsk16)); // too short
+    SS_CHECK(!sc::Psk::from_base64(spec.value(), "not base64"));
 }
 
 void test_no_heap_in_steady_state()
