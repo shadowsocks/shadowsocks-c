@@ -31,6 +31,11 @@ function(ss_project_options target)
         # it when they are rewritten.
         target_compile_options(${target} PRIVATE
             $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti -fno-threadsafe-statics>)
+        # GCC's C++ -Wall adds -Wsign-compare and -Wclass-memaccess, which C's
+        # -Wall does not have. Modules converted from C keep the warning set
+        # they were written against; ss_strict_warnings() turns both back on.
+        target_compile_options(${target} PRIVATE
+            $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-sign-compare -Wno-class-memaccess>)
         if(SS_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
         endif()
@@ -61,6 +66,7 @@ endfunction()
 # tests).
 function(ss_strict_warnings target)
     if(NOT MSVC)
-        target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wextra>)
+        target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
+            $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wsign-compare -Wclass-memaccess>)
     endif()
 endfunction()
