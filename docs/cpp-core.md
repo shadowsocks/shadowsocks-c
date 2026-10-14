@@ -1,10 +1,11 @@
 # C++20 core and allocation policy
 
-Status: phases 1-3 of an incremental port. Every module of `src/` is
-compiled as C++20 (the code is still the C design, converted mechanically).
-The ownership and allocation primitives in `src/core/` and the event layer
-in `src/event/` exist and are tested; the relay engines that will use them
-are the next phases.
+Status: phases 1-3 done, 4-5 in progress. Every module of `src/` is
+compiled as C++20 (most of it is still the C design, converted
+mechanically). The ownership and allocation primitives (`src/core/`), the
+event layer (`src/event/`), allocation-free AEAD and stream codecs
+(`src/crypto/`) and the slab-based cache exist and are tested; the relay
+engines that will use them are the next phases.
 
 ## Goals
 
@@ -62,6 +63,18 @@ by closing their handles into one. `DeadlineList` drives the idle timeouts
 of many owners from one timer. The `ss_event` C API remains for the code
 that still uses it and is removed with its last caller.
 
+## Crypto (`src/crypto/`)
+
+`aead.hpp` (SIP004/SIP007 AEAD) and `stream.hpp` (legacy stream ciphers)
+provide value-type codecs: the cipher state is held inside the codec, TCP
+decoders reassemble into a fixed buffer sized for one chunk, and HKDF-SHA1
+runs on stack SHA-1 state. They are tested differentially against the C
+implementation, which the programs still use until the relay engines move
+over. The bundled Mbed TLS enables `MBEDTLS_BLOCK_CIPHER_C` so GCM key setup
+does not allocate; with a system Mbed TLS lacking it, `mbedtls_gcm_setkey`
+may still allocate. AEAD-2022 (SIP022) codecs follow once the pending
+UDP-session rework on `fix/aead2022-udp-session-eviction` has landed.
+
 ## Phases
 
 1. Build and core (done): C++ enabled in CMake, `src/core/`, unit tests
@@ -71,8 +84,10 @@ that still uses it and is removed with its last caller.
    modules still allocate like the C code; `scripts/no_heap_baseline.txt`
    ratchets that down as they are rewritten.
 3. Event loop wrapper over libuv (done: `src/event/`, `test_event_cpp`).
-4. Crypto: cipher contexts held by value, dispatched with `std::variant`.
-5. Services: cache, lists, resolver, ACL and configuration on the new primitives.
+4. Crypto: cipher contexts held by value, dispatched with `std::variant`
+   (AEAD and stream codecs done; AEAD-2022 pending).
+5. Services: cache (done: fixed slab, no per-entry allocation), lists,
+   resolver, ACL and configuration on the new primitives.
 6. One TCP relay engine shared by ss-tunnel, ss-local, ss-redir and ss-server.
 7. UDP relay engine.
 8. Seal the heap after startup; new `max_connections`, `max_udp_sessions`
@@ -110,6 +125,12 @@ includes a DNS lookup.
 | 2022-blake3-aes-256-gcm | 84.0 | 33.0 |
 | aes-256-cfb (stream) | 77.1 | 26.5 |
 | aes-256-gcm, 1-byte payload | 85.0 | 36.0 |
+
+After the cache rewrite and `MBEDTLS_BLOCK_CIPHER_C` (programs otherwise
+unchanged): aes-256-gcm 87.1 / 36.9, 2022-blake3-aes-256-gcm 80.1 / 31.0.
+The new codecs and the cache are checked separately for zero allocations
+by `alloc_steady_crypto_aead`, `alloc_steady_crypto_stream` and
+`alloc_steady_cache` (`tests/alloc_audit/check_steady.py`).
 
 Unstripped Release sizes at the same commit: ss-local 1,086,888 bytes,
 ss-server 1,086,952 bytes, ss-tunnel 542,200 bytes.
