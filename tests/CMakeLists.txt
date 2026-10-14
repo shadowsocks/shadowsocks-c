@@ -83,6 +83,12 @@ ss_add_test(test_event_cpp "test_event_cpp.cpp" "ss_uv")
 ss_strict_warnings(test_event_cpp.cpp)
 set_tests_properties(test_event_cpp PROPERTIES TIMEOUT 30)
 
+# test_heap_guard_cpp - library heaps fall back instead of failing a realloc
+ss_add_test(test_heap_guard_cpp
+    "test_heap_guard_cpp.cpp;${PROJECT_SOURCE_DIR}/src/core/heap_guard.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "ss_uv;ss_cares;ss_mbedcrypto;ss_sodium")
+ss_strict_warnings(test_heap_guard_cpp.cpp)
+
 # C++ sources under src/ must not allocate on the heap (see the script).
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)

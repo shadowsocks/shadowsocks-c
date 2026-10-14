@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <cstdlib>
+#include <cstring>
 #include <memory>
 
 #include <ares.h>
@@ -54,14 +55,25 @@ void *heap_realloc(FixedHeap &h, void *old, std::size_t size) noexcept
     if (old != nullptr && !h.owns(old)) {
         return std::realloc(old, size); // heap-ok: allocated before the switch
     }
+    if (old != nullptr && size == 0) {
+        h.deallocate(old);
+        return nullptr;
+    }
+    // Remember the old block's size first: reallocate() frees it only when
+    // it succeeds.
+    std::size_t usable = old != nullptr ? h.usable_size(old) : 0;
     if (void *p = h.reallocate(old, size)) {
         return p;
     }
-    if (size == 0) {
-        return nullptr;
-    }
+    // Too large for any size class, or over budget: move to the system heap
+    // (libuv aborts when growing its watcher array fails).
     fallbacks.fetch_add(1, std::memory_order_relaxed);
-    return nullptr; // the caller keeps `old`
+    void *fresh = std::malloc(size); // heap-ok: over budget, see heap_report()
+    if (fresh != nullptr && old != nullptr) {
+        std::memcpy(fresh, old, usable < size ? usable : size);
+        h.deallocate(old);
+    }
+    return fresh; // on failure the caller keeps `old`
 }
 
 void heap_free(FixedHeap &h, void *p) noexcept

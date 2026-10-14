@@ -111,6 +111,13 @@ public:
         deallocate_locked(p);
     }
 
+    // Bytes the caller may use in a block this heap returned.
+    std::size_t usable_size(void *p) noexcept
+    {
+        Guard guard(lock_);
+        return class_size(header_of(p)->cls) - kHeader;
+    }
+
     bool owns(const void *p) const noexcept
     {
         auto *b = static_cast<const std::byte *>(p);
