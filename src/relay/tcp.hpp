@@ -68,6 +68,10 @@ struct TcpConfig {
     void (*on_traffic)() = nullptr;
     // ss-server: a client failed the handshake (logging, nftables).
     void (*report_failure)(ss_socket_t client, const char *reason) = nullptr;
+    // ss-server --connmark-to-TOS: runs before each write to the client
+    // with per-connection state the hook owns, released when it closes.
+    void (*downstream)(void **state, ss_socket_t client, ss_socket_t upstream) = nullptr;
+    void (*release)(void *state) = nullptr;
 };
 
 class TcpRelay;
@@ -154,6 +158,7 @@ private:
     bool dns_done_     = false;
     bool dns_ok_       = false;
     bool replied_      = false; // first upstream bytes reached the client
+    void *hook_state_  = nullptr;
     sockaddr_storage dns_answer_{};
 };
 

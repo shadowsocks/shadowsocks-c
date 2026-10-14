@@ -374,6 +374,10 @@ bool Connection::client_kind() const noexcept
 
 void Connection::begin_close(CloseCompletion done) noexcept
 {
+    if (hook_state_ != nullptr && relay_->config_.release != nullptr) {
+        relay_->config_.release(hook_state_);
+        hook_state_ = nullptr;
+    }
     done_ = done;
     closer_.arm(CloseCompletion(
         [](void *self, std::uint32_t) {
@@ -1100,6 +1104,9 @@ Flow Connection::pump_to_client() noexcept
             }
         }
         Pull p = pull(upstream_.fd(), decode, to_client_, relay_->config_.rx);
+        if (p == Pull::data && relay_->config_.downstream != nullptr) {
+            relay_->config_.downstream(&hook_state_, client_.fd(), upstream_.fd());
+        }
         switch (p) {
         case Pull::data:
             if (!replied_) {

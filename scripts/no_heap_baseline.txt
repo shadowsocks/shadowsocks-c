@@ -15,7 +15,7 @@ src/plugin.cpp 3
 src/process.cpp 26
 src/redir.cpp 15
 src/rule.cpp 2
-src/server.cpp 17
+src/server.cpp 4
 src/ss_event.cpp 5
 src/ssurl.cpp 3
 src/stream.cpp 3
