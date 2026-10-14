@@ -63,8 +63,23 @@ RSS with 1,000 established, idle connections through ss-local and ss-server
 
 Each connection slot carries about 104 KiB of inline buffers, against roughly
 58 KiB that the C relay allocated on demand. The pool is reserved virtually at
-startup and only touched slots become resident. A shared buffer pool with read
-backpressure would cut this; it is the main open trade-off of the rewrite.
+startup and only the touched pages of a slot become resident.
+
+The table above was taken on Apple Silicon, whose 16 KiB pages round every
+touched buffer up to a whole page. The same test on Linux (4 KiB pages, GCC,
+Alpine container, aes-256-gcm, one small request per connection) gives:
+
+| | C server | C++ server | C local | C++ local |
+|---|---:|---:|---:|---:|
+| idle | 1,380 KiB | 1,812 KiB | 1,248 KiB | 1,684 KiB |
+| 1,000 connections | 27,604 KiB | 37,248 KiB | 24,744 KiB | 34,236 KiB |
+| per connection | 26.2 KiB | 35.4 KiB | 23.5 KiB | 32.6 KiB |
+
+So the fixed slots cost about 9 KiB per connection more than C on Linux.
+Construction does not zero-fill the buffers (a user-provided `FixedBuffer`
+constructor changed nothing), so the difference is page granularity across
+the separate inline buffers. A shared buffer pool with read backpressure
+would cut it; it is the main open trade-off of the rewrite.
 
 ### UDP
 
