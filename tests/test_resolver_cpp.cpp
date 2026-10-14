@@ -24,8 +24,8 @@ namespace {
 
 struct Answered {
     unsigned called = 0;
-    bool missing    = false;
     int family      = 0;
+    bool missing    = false;
     bool ok         = false;
 };
 
@@ -138,6 +138,7 @@ void test_answers_and_limits()
         SS_CHECK(loop.init());
         test_loop = &loop;
         int fd    = socket(AF_INET, SOCK_DGRAM, 0);
+        SS_CHECK(fd >= 0);
         sockaddr_in a{};
         a.sin_family      = AF_INET;
         a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);

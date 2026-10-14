@@ -26,6 +26,7 @@ void on_ready(int socks_fd, int, void *) { ready_fd = socks_fd; }
 int free_port()
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
+    SS_CHECK(fd >= 0);
     sockaddr_in a{};
     a.sin_family      = AF_INET;
     a.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
@@ -39,6 +40,9 @@ int free_port()
 bool socks_greeting(int port)
 {
     int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return false;
+    }
     sockaddr_in a{};
     a.sin_family      = AF_INET;
     a.sin_port        = htons(static_cast<uint16_t>(port));
