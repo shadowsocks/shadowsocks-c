@@ -3,7 +3,7 @@
 # violations, and also when it loses some, so the number here always goes
 # down. Remove a file once it is rewritten on the src/core primitives.
 src/ipset.cpp 3
-src/jconf.cpp 16
+src/jconf.cpp 6
 src/json.cpp 2
 src/local.cpp 1
 src/manager.cpp 14

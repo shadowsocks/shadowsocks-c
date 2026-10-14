@@ -34,6 +34,11 @@
 #include "string.h"
 
 #include "core.h"
+#include "core/arena.hpp"
+
+#include <memory>
+#include <new>
+#include <string_view>
 
 #define check_json_value_type(value, expected_type, message) \
     do { \
@@ -41,15 +46,115 @@
             FATAL((message)); \
     } while (0)
 
+/*
+ * The parsed configuration lives as long as the process, so its strings come
+ * from one arena reserved when the file is read. The file text and the JSON
+ * tree use a second, scratch arena that is released before read_jconf
+ * returns. Nothing here goes back to malloc per string.
+ */
+namespace {
+
+alignas(ss::MonotonicArena) unsigned char conf_arena_storage[sizeof(ss::MonotonicArena)];
+ss::MonotonicArena *conf_arena;
+
+// The arena is never destroyed: callers keep jconf_t pointers until exit.
+ss::MonotonicArena &
+config_arena(std::size_t bytes)
+{
+    if (conf_arena == nullptr) {
+        conf_arena = ::new (conf_arena_storage) ss::MonotonicArena(); // heap-ok: placement into static storage
+    } else {
+        // A second read_jconf replaces the previous result (conf is static).
+        *conf_arena = ss::MonotonicArena();
+    }
+    if (!conf_arena->reserve(bytes)) {
+        FATAL("No enough memory.");
+    }
+    return *conf_arena;
+}
+
+char *
+conf_strndup(std::string_view text)
+{
+    auto copy = conf_arena->intern(text);
+    if (!copy) {
+        FATAL("No enough memory.");
+    }
+    return const_cast<char *>(copy->data());
+}
+
+// json-parser's allocator hooks. The scratch Region is calloc'ed and never
+// reused within one parse, so `zero` already holds.
+void *
+scratch_alloc(size_t size, int, void *user)
+{
+    auto bytes = static_cast<ss::MonotonicArena *>(user)->allocate(size);
+    return bytes ? bytes->data() : nullptr;
+}
+
+void
+scratch_free(void *, void *)
+{
+}
+
+struct AddrParts {
+    std::string_view host;
+    std::string_view port; // empty when there is none
+};
+
+// Split "host", "host:port", "[v6]" or "[v6]:port". IPv6 literals without
+// brackets and anything else with several colons stay whole.
+AddrParts
+split_addr(const char *str)
+{
+    // Plain pointer arithmetic: string_view::substr can throw out_of_range,
+    // which would pull in the C++ runtime.
+    std::string_view text(str);
+    auto slice = [&](std::size_t from, std::size_t to) { return std::string_view(str + from, to - from); };
+    struct ss_ip ip;
+    if (ss_ip_init(&ip, str) != -1) {
+        return { text, {} };
+    }
+    if (text.front() == '[') {
+        auto end = text.find(']');
+        if (end == std::string_view::npos) {
+            return { text, {} };
+        }
+        AddrParts parts{ slice(1, end), {} };
+        if (end + 1 < text.size() && text[end + 1] == ':') {
+            parts.port = slice(end + 2, text.size());
+        }
+        return parts;
+    }
+    auto colon = text.find(':');
+    if (colon == std::string_view::npos || text.find(':', colon + 1) != std::string_view::npos) {
+        return { text, {} };
+    }
+    return { slice(0, colon), slice(colon + 1, text.size()) };
+}
+
+void
+parse_conf_addr(const char *str, ss_addr_t *addr)
+{
+    if (str == NULL) {
+        return;
+    }
+    AddrParts parts = *str == '\0' ? AddrParts{} : split_addr(str);
+    addr->host = conf_strndup(parts.host);
+    addr->port = parts.port.empty() ? NULL : conf_strndup(parts.port);
+}
+
+} // namespace
+
 static char *
 to_string(const json_value *value)
 {
     if (value->type == json_string) {
-        return ss_strndup(value->u.string.ptr, value->u.string.length);
+        return conf_strndup(std::string_view(value->u.string.ptr, value->u.string.length));
     } else if (value->type == json_integer) {
         char buf[32];
         snprintf(buf, sizeof(buf), "%" PRId64, value->u.integer);
-        return strdup(buf);
+        return conf_strndup(buf);
     } else if (value->type == json_null) {
         return NULL;
     } else {
@@ -83,56 +188,14 @@ parse_addr(const char *str_in, ss_addr_t *addr)
 {
     if (str_in == NULL)
         return;
-
-    int ret = -1, n = 0, len;
-    char *str = strdup(str_in);
-    len = strlen(str_in);
-
-    struct ss_ip ip;
-    if (ss_ip_init(&ip, str) != -1) {
-        addr->host = str;
+    if (*str_in == '\0') {
+        addr->host = strdup(str_in);
         addr->port = NULL;
         return;
     }
-
-    if (str[0] == '[') {
-        char *end = strchr(str, ']');
-        if (end != NULL) {
-            addr->host = ss_strndup(str + 1, end - str - 1);
-            if (end[1] == ':' && end[2] != '\0') {
-                addr->port = strdup(end + 2);
-            } else {
-                addr->port = NULL;
-            }
-            free(str);
-            return;
-        }
-
-        addr->host = str;
-        addr->port = NULL;
-        return;
-    }
-
-    char *pch = strchr(str, ':');
-    while (pch != NULL) {
-        n++;
-        ret = pch - str;
-        pch = strchr(pch + 1, ':');
-    }
-
-    if (ret == -1 || n != 1) {
-        addr->host = strdup(str);
-        addr->port = NULL;
-    } else {
-        addr->host = ss_strndup(str, ret);
-        if (ret < len - 1) {
-            addr->port = strdup(str + ret + 1);
-        } else {
-            addr->port = NULL;
-        }
-    }
-
-    free(str);
+    AddrParts parts = split_addr(str_in);
+    addr->host = ss_strndup(parts.host.data(), parts.host.size());
+    addr->port = parts.port.empty() ? NULL : ss_strndup(parts.port.data(), parts.port.size());
 }
 
 /* CLI endpoints are strict; keep the legacy JSON address parser unchanged. */
@@ -263,7 +326,6 @@ read_jconf(const char *file)
 
     memset(&conf, 0, sizeof(jconf_t));
 
-    char *buf;
     json_value *obj;
 
     FILE *f = fopen(file, "rb");
@@ -283,22 +345,31 @@ read_jconf(const char *file)
         FATAL("Too large config file.");
     }
 
-    buf = (char *)ss_malloc(pos + 1);
-    if (buf == NULL) {
+    // Every string kept in conf copies part of the file plus a NUL: a JSON
+    // string or key, an integer printed back in decimal, or the two halves of
+    // an address (whose unsplit copy is kept too). 16x the file size is a
+    // comfortable bound.
+    std::size_t len = static_cast<std::size_t>(pos);
+    config_arena(16 * len + 4096);
+
+    // json-parser needs a json_value (and an array or object slot) for every
+    // value, each costing at least one byte of input.
+    ss::MonotonicArena scratch;
+    if (!scratch.reserve(len + 1 + 128 * (len + 1))) {
         FATAL("No enough memory.");
     }
+    char *buf = reinterpret_cast<char *>(scratch.allocate(len + 1, 1)->data());
 
-    int nread = fread(buf, pos, 1, f);
-    if (!nread) {
+    if (len > 0 && fread(buf, len, 1, f) != 1) {
         FATAL("Failed to read the config file.");
     }
     fclose(f);
 
-    buf[pos] = '\0'; // end of string
+    buf[len] = '\0'; // end of string
 
-    json_settings settings = { 0UL, 0, NULL, NULL, NULL };
+    json_settings settings = { 0UL, 0, scratch_alloc, scratch_free, &scratch, 0 };
     char error_buf[512];
-    obj = json_parse_ex(&settings, buf, pos, error_buf);
+    obj = json_parse_ex(&settings, buf, len, error_buf);
 
     if (obj == NULL) {
         FATAL(error_buf);
@@ -316,15 +387,11 @@ read_jconf(const char *file)
                             break;
                         }
                         json_value *v  = value->u.array.values[j];
-                        char *addr_str = to_string(v);
-                        parse_addr(addr_str, conf.remote_addr + j);
-                        ss_free(addr_str);
+                        parse_conf_addr(to_string(v), conf.remote_addr + j);
                         conf.remote_num = j + 1;
                     }
                 } else if (value->type == json_string) {
-                    char* tmp_str = to_string(value);
-                    parse_addr(tmp_str, conf.remote_addr);
-                    ss_free(tmp_str);
+                    parse_conf_addr(to_string(value), conf.remote_addr);
                     conf.remote_num = 1;
                 }
             } else if (strcmp(name, "port_password") == 0) {
@@ -335,8 +402,8 @@ read_jconf(const char *file)
                         }
                         json_value *v = value->u.object.values[j].value;
                         if (v->type == json_string) {
-                            conf.port_password[j].port = ss_strndup(value->u.object.values[j].name,
-                                                                    value->u.object.values[j].name_length);
+                            conf.port_password[j].port = conf_strndup(
+                                std::string_view(value->u.object.values[j].name, value->u.object.values[j].name_length));
                             conf.port_password[j].password = to_string(v);
                             conf.port_password_num         = j + 1;
                         }
@@ -364,9 +431,7 @@ read_jconf(const char *file)
                 conf.user = to_string(value);
             } else if (strcmp(name, "plugin") == 0) {
                 conf.plugin = to_string(value);
-                // NOLINTNEXTLINE(clang-analyzer-unix.Malloc): config strings live for the process lifetime
                 if (conf.plugin && strlen(conf.plugin) == 0) {
-                    ss_free(conf.plugin);
                     conf.plugin = NULL;
                 }
             } else if (strcmp(name, "plugin_opts") == 0) {
@@ -409,12 +474,11 @@ read_jconf(const char *file)
                         if (v->type == json_string) {
                             char *dscp_str = to_string(v);
                             int dscp   = parse_dscp(dscp_str);
-                            char *port = ss_strndup(value->u.object.values[j].name,
-                                                    value->u.object.values[j].name_length);
+                            char *port = conf_strndup(std::string_view(value->u.object.values[j].name,
+                                                                       value->u.object.values[j].name_length));
                             conf.dscp[j].port = port;
                             conf.dscp[j].dscp = dscp;
                             conf.dscp_num     = j + 1;
-                            ss_free(dscp_str);
                         }
                     }
                 }
@@ -435,7 +499,6 @@ read_jconf(const char *file)
                     LOGI("ignore unknown mode: %s, use tcp_only as fallback",
                          mode_str);
 
-                ss_free(mode_str);
             } else if (strcmp(name, "mtu") == 0) {
                 conf.mtu = to_nonnegative_int(value, name);
             } else if (strcmp(name, "mptcp") == 0) {
@@ -479,7 +542,6 @@ read_jconf(const char *file)
         FATAL("Invalid config file");
     }
 
-    ss_free(buf);
-    json_value_free(obj);
+    // The tree and the file text go with the scratch arena.
     return &conf;
 }

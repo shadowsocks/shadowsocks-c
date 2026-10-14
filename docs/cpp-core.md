@@ -113,7 +113,12 @@ Pools are reserved at startup and only touched slots become resident.
 3. Event layer over libuv (`src/event/`).
 4. Crypto codecs held by value: AEAD, stream and AEAD-2022.
 5. Services: the cache on a fixed slab, `IntrusiveList` for ACL rules and
-   the manager, the pooled resolver.
+   the manager, the pooled resolver, and `read_jconf` on arenas (the file and
+   JSON tree in a scratch arena released before it returns, the parsed
+   strings in one process-lifetime arena). ACL rules and IP-set nodes still
+   come from `malloc` at startup: the IP-set trie frees nodes as it merges
+   prefixes, and its size depends on the ACL file, so a bump arena would
+   have to reserve for the worst case.
 6. One TCP engine for ss-tunnel, ss-local, ss-redir and ss-server.
 7. One UDP engine.
 8. Library heaps for libuv, c-ares and Mbed TLS, `heap_seal()`, and the
@@ -122,7 +127,8 @@ Pools are reserved at startup and only touched slots become resident.
    (`ss_local_start`/`stop`/`wait`/`destroy`) and the RAII
    `shadowsocks/shadowsocks.hpp`.
 10. Removal of `ss_event`, the C resolver, the C codecs (now test oracles),
-    uthash and `ss_list`.
+    uthash and `ss_list`, and the unit tests ported to C++
+    (`tests/test_helpers.hpp`).
 
 ## Allocation audit
 
