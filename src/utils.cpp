@@ -43,7 +43,6 @@
 
 #include <sodium.h>
 
-#include "crypto.h"
 #include "utils.h"
 
 #ifdef HAVE_SETRLIMIT

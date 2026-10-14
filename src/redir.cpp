@@ -51,7 +51,6 @@
 #include "netutils.h"
 #include "utils.h"
 #include "common.h"
-#include "crypto.h"
 #include "jconf.h"
 #include "common.h"
 
@@ -763,6 +762,8 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
     USE_SYSLOG(argv[0], pid_flags);
     if (pid_flags) {
         daemonize(pid_path);
+        if (!program.after_fork())
+            FATAL("failed to reinitialize the event loop");
     }
 
     if (no_delay) {

@@ -25,7 +25,7 @@
 
 #include <time.h>
 #include "core.h"
-#include "uthash.h"
+#include "core.h"
 
 #include "jconf.h"
 
@@ -64,7 +64,7 @@ struct manager_ctx {
 };
 
 struct server {
-    UT_hash_handle hh;
+    struct ss_list_item entries; /* in server_table, at most MAX_PORT_NUM */
     char port[8];
     char password[128];
     char fast_open[8];

@@ -7,17 +7,14 @@
 
 #include <mbedtls/sha1.h>
 
-#include "crypto.h"
+#include "crypto/keys.hpp"
 #include "ppbloom.h"
-
-// crypto.h defines min/max macros for the C sources.
-#undef min
-#undef max
 
 namespace ss::crypto {
 
 namespace {
 
+// [cli-aead-ciphers]
 constexpr AeadSpec kSpecs[] = {
     { "aes-128-gcm", AeadKind::aes_128_gcm, 16, 12, 16 },
     { "aes-192-gcm", AeadKind::aes_192_gcm, 24, 12, 16 },
@@ -27,6 +24,7 @@ constexpr AeadSpec kSpecs[] = {
     { "xchacha20-ietf-poly1305", AeadKind::xchacha20_poly1305, 32, 24, 16 },
 #endif
 };
+// [cli-aead-ciphers]
 
 constexpr std::string_view kSubkeyInfo = "ss-subkey";
 
@@ -130,7 +128,7 @@ Result<MasterKey> MasterKey::from_password(const AeadSpec &spec, const char *pas
         return fail(Errc::config);
     }
     MasterKey master{ spec, {} };
-    if (crypto_derive_key(password, master.bytes.data(), spec.key_len) != spec.key_len) {
+    if (!derive_key(password, { master.bytes.data(), spec.key_len })) {
         return fail(Errc::config);
     }
     return master;
@@ -142,7 +140,7 @@ Result<MasterKey> MasterKey::from_base64(const AeadSpec &spec, const char *key) 
         return fail(Errc::config);
     }
     MasterKey master{ spec, {} };
-    if (crypto_parse_key(key, master.bytes.data(), spec.key_len) != spec.key_len) {
+    if (!parse_key(key, { master.bytes.data(), spec.key_len }, false)) {
         return fail(Errc::config);
     }
     return master;

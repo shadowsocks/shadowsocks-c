@@ -77,7 +77,21 @@ char *executable     = (char *)"ss-server";
 char *working_dir    = NULL;
 size_t working_dir_size = 0;
 
-static struct server *server_table;
+/* The managed servers, looked up by port. There are at most MAX_PORT_NUM,
+ * and lookups only happen on control messages, so a list does. */
+static struct ss_list server_table;
+
+static struct server *
+find_server(const char *port)
+{
+    struct ss_list_item *curr, *next;
+    ss_list_foreach_void(&server_table, curr, next) {
+        struct server *server = ss_container_of(curr, struct server, entries);
+        if (strcmp(server->port, port) == 0)
+            return server;
+    }
+    return NULL;
+}
 
 static int
 copy_port(char *dst, size_t dst_len, const char *src, size_t src_len)
@@ -848,9 +862,10 @@ add_server(struct manager_ctx *manager, struct server *server)
         return -1;
     }
 
-    struct server *replaced;
-    // NOLINTNEXTLINE(clang-analyzer-core.DivideZero,clang-analyzer-security.ArrayBound): uthash initializes nonzero buckets and hashes the NUL-terminated port within its key length
-    HASH_REPLACE_STR(server_table, port, server, replaced);
+    struct server *replaced = find_server(server->port);
+    if (replaced != NULL)
+        ss_list_remove(&replaced->entries);
+    ss_list_add(&server_table, &server->entries);
     if (replaced != NULL) {
         destroy_server(replaced);
         ss_free(replaced);
@@ -927,11 +942,10 @@ remove_server(char *prefix, char *port)
 {
     struct server *old_server = NULL;
 
-    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): uthash hashes only strlen(port) bytes; manager ports are validated and NUL-terminated
-    HASH_FIND_STR(server_table, port, old_server);
+    old_server = find_server(port);
 
     if (old_server != NULL) {
-        HASH_DEL(server_table, old_server);
+        ss_list_remove(&old_server->entries);
         destroy_server(old_server);
         ss_free(old_server);
     }
@@ -945,9 +959,7 @@ update_stat(char *port, uint64_t traffic)
     if (verbose) {
         LOGI("update traffic %" PRIu64 " for port %s", traffic, port);
     }
-    struct server *ret;
-    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound): uthash hashes only strlen(port) bytes; manager ports are validated and NUL-terminated
-    HASH_FIND_STR(server_table, port, ret);
+    struct server *ret = find_server(port);
     if (ret != NULL) {
         struct server *server = (struct server *)ret;
         server->traffic = traffic;
@@ -1017,12 +1029,13 @@ manager_recv_cb(void *ctx) noexcept
             ERROR("add_sendto");
         }
     } else if (strcmp(action, "list") == 0) {
-        struct server *server, *next;
+        struct ss_list_item *curr, *next;
         char buf[BUF_SIZE];
         memset(buf, 0, BUF_SIZE);
         strcpy(buf, "[");
 
-        HASH_ITER(hh, server_table, server, next) {
+        ss_list_foreach_void(&server_table, curr, next) {
+            struct server *server = ss_container_of(curr, struct server, entries);
             char *method          = server->method ? server->method : manager->method;
             char entry_buf[BUF_SIZE];
             size_t entry_pos      = 0;
@@ -1082,7 +1095,7 @@ manager_recv_cb(void *ctx) noexcept
         update_stat(port, traffic);
 
     } else if (strcmp(action, "ping") == 0) {
-        struct server *server, *next;
+        struct ss_list_item *curr, *next;
 
         char buf[BUF_SIZE];
         size_t pos = 0;
@@ -1092,7 +1105,8 @@ manager_recv_cb(void *ctx) noexcept
             goto ERROR_MSG;
         }
 
-        HASH_ITER(hh, server_table, server, next) {
+        ss_list_foreach_void(&server_table, curr, next) {
+            struct server *server = ss_container_of(curr, struct server, entries);
             char entry_buf[64];
             int entry_len = snprintf(entry_buf, sizeof(entry_buf),
                                      "\"%s\":%" PRIu64 ",",
@@ -1755,7 +1769,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         FATAL("Couldn't open the directory");
     }
 
-    server_table = NULL;
+    ss_list_init(&server_table);
 
     if (conf != NULL) {
         for (i = 0; i < conf->port_password_num; i++) {
@@ -1832,10 +1846,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     }
 
     // Clean up
-    struct server *server, *next;
-    HASH_ITER(hh, server_table, server, next) {
+    struct ss_list_item *curr, *next;
+    ss_list_foreach_void(&server_table, curr, next) {
+        struct server *server = ss_container_of(curr, struct server, entries);
         stop_server(working_dir, server->port);
-        HASH_DEL(server_table, server);
+        ss_list_remove(&server->entries);
         destroy_server(server);
         ss_free(server);
     }

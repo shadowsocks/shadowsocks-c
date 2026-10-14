@@ -52,7 +52,6 @@
 #include "netutils.h"
 #include "utils.h"
 #include "plugin.h"
-#include "crypto.h"
 #include "jconf.h"
 #include "common.h"
 #include "ss_windows.h"
@@ -844,6 +843,8 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     USE_SYSLOG(argv[0], pid_flags);
     if (pid_flags) {
         daemonize(pid_path);
+        if (!program.after_fork())
+            FATAL("failed to reinitialize the event loop");
     }
 
     if (ipv6first) {

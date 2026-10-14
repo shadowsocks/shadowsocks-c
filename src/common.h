@@ -30,22 +30,11 @@
 #define MODULE_LOCAL
 #endif
 
-#include "crypto.h"
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-int init_udprelay(const char *server_host, const char *server_port,
-#ifdef MODULE_LOCAL
-                  const struct sockaddr *remote_addr, const int remote_addr_len,
-#ifdef MODULE_TUNNEL
-                  const ss_addr_t tunnel_addr,
-#endif
-#endif
-                  int mtu, crypto_t *crypto, int timeout, const char *iface);
-
-void free_udprelay(void);
 
 #ifdef __ANDROID__
 int protect_socket(int fd);

@@ -8,8 +8,8 @@
 #include <mbedtls/aes.h>
 #include <sodium.h>
 
-#include "base64.h"
 #include "blake3/blake3.h"
+#include "crypto/keys.hpp"
 
 namespace ss::crypto {
 
@@ -188,15 +188,9 @@ Result<Psk> Psk::from_base64(const Aead2022Spec &spec, const char *key) noexcept
         return fail(Errc::config);
     }
     Psk psk{ spec, {} };
-    // One spare byte tells an over-long key from an exact one.
-    std::uint8_t out[kMaxKey + 1];
-    int n = base64_decode(out, key, static_cast<int>(spec.aead.key_len) + 1);
-    if (n != static_cast<int>(spec.aead.key_len)) {
-        sodium_memzero(out, sizeof(out));
+    if (!parse_key(key, { psk.bytes.data(), spec.aead.key_len }, true)) {
         return fail(Errc::config);
     }
-    std::memcpy(psk.bytes.data(), out, spec.aead.key_len);
-    sodium_memzero(out, sizeof(out));
     return psk;
 }
 

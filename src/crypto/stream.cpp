@@ -6,16 +6,13 @@
 
 #include <sodium.h>
 
-#include "crypto.h"
-
-// crypto.h defines min/max macros for the C sources.
-#undef min
-#undef max
+#include "crypto/keys.hpp"
 
 namespace ss::crypto {
 
 namespace {
 
+// [cli-stream-ciphers]
 constexpr StreamSpec kStreams[] = {
     { "aes-128-cfb", StreamKind::aes_cfb, 16, 16 },
     { "aes-192-cfb", StreamKind::aes_cfb, 24, 16 },
@@ -30,6 +27,7 @@ constexpr StreamSpec kStreams[] = {
     { "chacha20", StreamKind::chacha20, 32, 8 },
     { "chacha20-ietf", StreamKind::chacha20_ietf, 32, 12 },
 };
+// [cli-stream-ciphers]
 
 constexpr std::size_t kSodiumBlock = 64;
 
@@ -66,7 +64,7 @@ Result<StreamKey> StreamKey::from_password(const StreamSpec &spec, const char *p
         return fail(Errc::config);
     }
     StreamKey key{ spec, {} };
-    if (crypto_derive_key(password, key.bytes.data(), spec.key_len) != spec.key_len) {
+    if (!derive_key(password, { key.bytes.data(), spec.key_len })) {
         return fail(Errc::config);
     }
     return key;

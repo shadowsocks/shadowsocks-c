@@ -58,7 +58,6 @@
 #include "socks5.h"
 #include "acl.h"
 #include "plugin.h"
-#include "crypto.h"
 #include "jconf.h"
 #include "common.h"
 #include "ss_windows.h"
@@ -284,7 +283,6 @@ struct Relays {
         loop = &event_loop;
         LOGI("initializing ciphers... %s", cipher);
         if (!method.init(cipher, pass, key, ss::crypto::Role::client)) {
-            LOGE("failed to initialize ciphers");
             return false;
         }
         return true;
@@ -1087,6 +1085,8 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
     USE_SYSLOG(argv[0], pid_flags);
     if (pid_flags) {
         daemonize(pid_path);
+        if (!program.after_fork())
+            FATAL("failed to reinitialize the event loop");
     }
 
     if (fast_open == 1) {

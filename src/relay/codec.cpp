@@ -4,15 +4,21 @@
 #include <algorithm>
 #include <cstring>
 
-#include "crypto.h"
+#include "crypto/keys.hpp"
 #include "ppbloom.h"
 #include "utils.h"
 
-// crypto.h defines min/max macros for the C sources.
-#undef min
-#undef max
-
 namespace ss::relay {
+
+namespace {
+
+// Ping-pong bloom filter sizing, as in the C implementation.
+constexpr int kBloomEntriesServer   = 1000000;
+constexpr double kBloomErrorServer  = 1e-10;
+constexpr int kBloomEntriesClient   = 10000;
+constexpr double kBloomErrorClient  = 1e-15;
+
+} // namespace
 
 Status Method::init(const char *method, const char *password, const char *key, Role role) noexcept
 {
@@ -26,22 +32,30 @@ Status Method::init(const char *method, const char *password, const char *key, R
     // The salt/IV replay filter shared by every connection and datagram.
     if (!bloom_ready_) {
         if (role == Role::server) {
-            ppbloom_init(BF_NUM_ENTRIES_FOR_SERVER, BF_ERROR_RATE_FOR_SERVER);
+            ppbloom_init(kBloomEntriesServer, kBloomErrorServer);
         } else {
-            ppbloom_init(BF_NUM_ENTRIES_FOR_CLIENT, BF_ERROR_RATE_FOR_CLIENT);
+            ppbloom_init(kBloomEntriesClient, kBloomErrorClient);
         }
         bloom_ready_ = true;
     }
     if (auto spec = crypto::find_aead2022(method)) {
         // The password field may carry the base64 PSK too.
-        SS_TRY_ASSIGN(psk, crypto::Psk::from_base64(*spec, key != nullptr ? key : password));
-        key_ = psk;
+        auto psk = crypto::Psk::from_base64(*spec, key != nullptr ? key : password);
+        if (!psk) {
+            crypto::report_bad_key("pre-shared key", spec->aead.key_len);
+            return fail(psk.error());
+        }
+        key_ = *psk;
         return {};
     }
     if (auto spec = crypto::find_aead(method)) {
         if (key != nullptr) {
-            SS_TRY_ASSIGN(master, crypto::MasterKey::from_base64(*spec, key));
-            key_ = master;
+            auto master = crypto::MasterKey::from_base64(*spec, key);
+            if (!master) {
+                crypto::report_bad_key("key", spec->key_len);
+                return fail(master.error());
+            }
+            key_ = *master;
         } else {
             SS_TRY_ASSIGN(master, crypto::MasterKey::from_password(*spec, password));
             key_ = master;
@@ -53,7 +67,8 @@ Status Method::init(const char *method, const char *password, const char *key, R
         LOGI("Stream ciphers are insecure, therefore deprecated, and should be almost always avoided.");
         if (key != nullptr) {
             crypto::StreamKey stream{ *spec, {} };
-            if (crypto_parse_key(key, stream.bytes.data(), spec->key_len) != spec->key_len) {
+            if (!crypto::parse_key(key, { stream.bytes.data(), spec->key_len }, false)) {
+                crypto::report_bad_key("key", spec->key_len);
                 return fail(Errc::config);
             }
             key_ = stream;

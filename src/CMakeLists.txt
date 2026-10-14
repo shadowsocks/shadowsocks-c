@@ -15,10 +15,6 @@ set(SS_ACL_SOURCE
         )
 
 set(SS_CRYPTO_SOURCE
-        crypto.cpp
-        aead.cpp
-        aead2022.cpp
-        aead2022_udp.cpp
         base64.cpp
         )
 
@@ -39,9 +35,6 @@ target_include_directories(blake3 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(blake3 PRIVATE -Wno-error -Wno-unused-function)
 set_target_properties(blake3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-if(SS_ENABLE_LEGACY)
-    list(APPEND SS_CRYPTO_SOURCE stream.cpp)
-endif()
 if(SS_ENABLE_PLUGINS)
     set(SS_PLUGIN_SOURCE plugin.cpp process.cpp)
 else()
@@ -58,6 +51,7 @@ set(SS_RELAY_SOURCE
         relay/resolver.cpp
         crypto/aead.cpp
         crypto/aead2022.cpp
+        crypto/keys.cpp
         )
 if(SS_ENABLE_LEGACY)
     list(APPEND SS_RELAY_SOURCE crypto/stream.cpp)

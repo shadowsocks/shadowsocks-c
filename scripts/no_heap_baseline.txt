@@ -2,10 +2,6 @@
 # Format: <path> <violations>. check_no_heap.py fails if a file gains
 # violations, and also when it loses some, so the number here always goes
 # down. Remove a file once it is rewritten on the src/core primitives.
-src/aead.cpp 4
-src/aead2022.cpp 3
-src/aead2022_udp.cpp 5
-src/crypto.cpp 4
 src/ipset.cpp 3
 src/jconf.cpp 16
 src/json.cpp 2
@@ -17,6 +13,5 @@ src/redir.cpp 1
 src/rule.cpp 2
 src/server.cpp 3
 src/ssurl.cpp 3
-src/stream.cpp 3
 src/tunnel.cpp 1
 src/utils.cpp 10
