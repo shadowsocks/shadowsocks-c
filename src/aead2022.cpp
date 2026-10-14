@@ -113,7 +113,7 @@ static int
 ss2022_salt_check_and_add(const uint8_t *salt, size_t salt_len)
 {
     if (ss2022_salt_pool == NULL) {
-        if (cache_create(&ss2022_salt_pool, SS2022_SALT_POOL_CAP, NULL) != 0)
+        if (cache_create_keyed(&ss2022_salt_pool, SS2022_SALT_POOL_CAP, MAX_KEY_LENGTH, NULL) != 0)
             return CRYPTO_ERROR;
     }
 

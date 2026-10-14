@@ -21,46 +21,48 @@
  */
 
 /*
- * Original Author:  Oliver Lorenz (ol), olli@olorenz.org, https://olorenz.org
- * License:  This is licensed under the same terms as uthash itself
+ * The first implementation was by Oliver Lorenz (ol), olli@olorenz.org,
+ * https://olorenz.org, on top of uthash.
  */
 
 #ifndef _CACHE_
 #define _CACHE_
 
-#include "uthash.h"
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/**
- * A cache entry
+/*
+ * A fixed-capacity cache of (key, data) pairs ordered by last use. All of
+ * its memory is reserved by cache_create(), so inserting, looking up and
+ * evicting never allocate.
+ *
+ * Inserting evicts the least recently used entry once the cache holds
+ * `capacity` entries, so at most capacity - 1 entries remain afterwards.
+ * Evicted, removed and cleared entries are handed to free_cb(key, data);
+ * without a free_cb their data is released with free(). Entries whose data
+ * is NULL are dropped silently. free_cb may use the cache.
  */
-struct cache_entry {
-    char *key;         /**<The key */
-    void *data;        /**<Payload */
-    double ts;    /**<Timestamp */
-    UT_hash_handle hh; /**<Hash Handle for uthash */
-};
+struct cache;
 
-/**
- * A cache object
- */
-struct cache {
-    size_t max_entries;              /**<Amount of entries this cache object can hold */
-    struct cache_entry *entries;     /**<Head pointer for uthash */
-    void (*free_cb)(void *key, void *element);  /**<Callback function to free cache entries */
-};
+/* Default longest key: a UDP relay key (struct sockaddr_storage plus an
+ * address family). */
+#define CACHE_DEFAULT_MAX_KEY 160
 
 int cache_create(struct cache **dst, const size_t capacity,
                  void (*free_cb)(void *key, void *element));
+/* Like cache_create() for keys of at most max_key_len bytes (at most 255). */
+int cache_create_keyed(struct cache **dst, size_t capacity, size_t max_key_len,
+                       void (*free_cb)(void *key, void *element));
 int cache_delete(struct cache *cache, int keep_data);
 int cache_clear(struct cache *cache, double age);
 int cache_lookup(struct cache *cache, char *key, size_t key_len, void *result);
 int cache_insert(struct cache *cache, char *key, size_t key_len, void *data);
 int cache_remove(struct cache *cache, char *key, size_t key_len);
 int cache_key_exist(struct cache *cache, char *key, size_t key_len);
+size_t cache_size(const struct cache *cache);
 
 #ifdef __cplusplus
 }

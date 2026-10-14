@@ -130,6 +130,12 @@ ss_add_test(test_cache
     "test_cache.c;${PROJECT_SOURCE_DIR}/src/cache.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
+# test_cache_cpp - fixed-capacity cache edge cases
+ss_add_test(test_cache_cpp
+    "test_cache_cpp.cpp;${PROJECT_SOURCE_DIR}/src/cache.cpp"
+    "ss_sodium")
+ss_strict_warnings(test_cache_cpp.cpp ${PROJECT_SOURCE_DIR}/src/cache.cpp)
+
 # test_ppbloom - needs bloom
 set(TEST_PPBLOOM_LIBS "")
 list(APPEND TEST_PPBLOOM_LIBS bloom)
@@ -294,6 +300,10 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
                         --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_crypto_aead_cpp>)
             set_tests_properties(alloc_steady_crypto_aead PROPERTIES LABELS "unit" TIMEOUT 60)
+            add_test(NAME alloc_steady_cache
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
+                        --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_cache_cpp>)
+            set_tests_properties(alloc_steady_cache PROPERTIES LABELS "unit" TIMEOUT 60)
             add_test(NAME alloc_audit_report
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/measure_alloc.py
                         --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}

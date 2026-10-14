@@ -123,6 +123,9 @@ if(ENABLE_NFTABLES)
     list(APPEND SS_SERVER_DEPS ${MNL_LIB} ${NFTNL_LIB})
 endif()
 
+# Modules rewritten in C++ compile with the stricter warning set.
+ss_strict_warnings(cache.cpp)
+
 function(ss_program name module sources)
     add_executable(${name} ${sources})
     target_compile_definitions(${name} PRIVATE ${module})

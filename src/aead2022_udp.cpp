@@ -202,8 +202,8 @@ static ss2022_udp_session_t *
 session_by_id(const uint8_t *session_id, cipher_t *cipher)
 {
     if (ss2022_sessions == NULL
-        && cache_create(&ss2022_sessions, SS2022_SESSION_TABLE_CAP,
-                        session_free_cb) != 0)
+        && cache_create_keyed(&ss2022_sessions, SS2022_SESSION_TABLE_CAP,
+                              SS2022_SESSION_ID_LEN, session_free_cb) != 0)
         return NULL;
 
     ss2022_udp_session_t *s = NULL;
