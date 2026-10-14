@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "crypto/keys.hpp"
+#include "crypto/mbedtls_compat.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -30,12 +31,12 @@ bool derive_key(const char *password, std::span<std::uint8_t> key) noexcept
     bool ok        = true;
     for (bool first = true; at < key.size(); first = false) {
         mbedtls_md5_init(&md5);
-        ok = ok && mbedtls_md5_starts(&md5) == 0;
+        ok = ok && mbed::md5_starts(&md5) == 0;
         if (!first) {
-            ok = ok && mbedtls_md5_update(&md5, digest, sizeof(digest)) == 0;
+            ok = ok && mbed::md5_update(&md5, digest, sizeof(digest)) == 0;
         }
-        ok = ok && mbedtls_md5_update(&md5, reinterpret_cast<const unsigned char *>(password), len) == 0
-             && mbedtls_md5_finish(&md5, digest) == 0;
+        ok = ok && mbed::md5_update(&md5, reinterpret_cast<const unsigned char *>(password), len) == 0
+             && mbed::md5_finish(&md5, digest) == 0;
         mbedtls_md5_free(&md5);
         std::size_t n = std::min(sizeof(digest), key.size() - at);
         std::memcpy(key.data() + at, digest, n);
