@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "crypto/keys.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 #include <mbedtls/md5.h>
