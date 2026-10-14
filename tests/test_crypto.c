@@ -13,7 +13,7 @@ int verbose = 0;
 #include "ppbloom.h"
 #include "utils.h"
 
-/* Provide nonce_cache symbol needed by crypto.c */
+/* Provide nonce_cache symbol needed by crypto.cpp */
 struct cache *nonce_cache = NULL;
 
 static void
@@ -366,7 +366,7 @@ main(void)
 
 #if SS_ENABLE_LEGACY
     /* mbedTLS-backed ciphers and libsodium-backed ciphers use different
-     * code paths in stream.c, so cover both. */
+     * code paths in stream.cpp, so cover both. */
     test_stream_multi_segment_roundtrip("aes-256-cfb");
     test_stream_multi_segment_roundtrip("aes-256-ctr");
     test_stream_multi_segment_roundtrip("camellia-128-cfb");

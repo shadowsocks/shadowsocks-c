@@ -364,11 +364,11 @@ later on the command line override the values taken from the URL.
 Set the cipher. The default is `chacha20-ietf-poly1305`.
 
 AEAD cipher names from the source (availability depends on the build):
-\snippet aead.c cli-aead-ciphers
+\snippet aead.cpp cli-aead-ciphers
 
 Legacy stream cipher names recognized by the source (disabled in minimal builds;
 some require backend support):
-\snippet stream.c cli-stream-ciphers
+\snippet stream.cpp cli-stream-ciphers
 
 The `2022-blake3-*` ciphers implement Shadowsocks 2022 (SIP022). They require
 a base64-encoded pre-shared key supplied with `--key` or `--password` (*-k*): 16 bytes for

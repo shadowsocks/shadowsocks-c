@@ -10,7 +10,7 @@ int verbose = 0;
 
 #include "crypto.h"
 
-/* Provide nonce_cache symbol needed by crypto.c */
+/* Provide nonce_cache symbol needed by crypto.cpp */
 struct cache *nonce_cache = NULL;
 
 static void

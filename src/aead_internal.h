@@ -1,5 +1,5 @@
 /*
- * aead_internal.h - Internal interface shared by aead.c and aead2022.c
+ * aead_internal.h - Internal interface shared by aead.cpp and aead2022.cpp
  *
  * Copyright (C) 2013 - 2026, Max Lv <max.c.lv@gmail.com>
  *
@@ -54,7 +54,7 @@ is_aead_2022(int method)
            || method == CHACHA20POLY1305IETF2022;
 }
 
-/* Low-level one-shot AEAD operations implemented in aead.c */
+/* Low-level one-shot AEAD operations implemented in aead.cpp */
 int aead_cipher_encrypt(cipher_ctx_t *cipher_ctx,
                         uint8_t *c, size_t *clen,
                         uint8_t *m, size_t mlen,
@@ -67,7 +67,7 @@ int aead_cipher_decrypt(cipher_ctx_t *cipher_ctx,
                         uint8_t *n, uint8_t *k);
 void aead_cipher_ctx_set_key(cipher_ctx_t *cipher_ctx, int enc);
 
-/* AEAD-2022 pieces implemented in aead2022.c */
+/* AEAD-2022 pieces implemented in aead2022.cpp */
 int aead_get_role(void);
 void ss2022_derive_subkey(const uint8_t *key, size_t key_len,
                           const uint8_t *salt, size_t salt_len,

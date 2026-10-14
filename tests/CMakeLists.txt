@@ -117,7 +117,7 @@ set(TEST_NETUTILS_LIBS
     ss_cares
 )
 ss_add_test(test_netutils
-    "test_netutils.c;${PROJECT_SOURCE_DIR}/src/netutils.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_netutils.c;${PROJECT_SOURCE_DIR}/src/netutils.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_NETUTILS_LIBS}")
 
 # test_cache - expiration uses a platform monotonic clock
@@ -145,7 +145,7 @@ ss_add_test(test_rule
 # test_acl - ACL precedence and prefix matching
 set(TEST_ACL_LIBS ${TEST_RULE_LIBS})
 ss_add_test(test_acl
-    "test_acl.c;${PROJECT_SOURCE_DIR}/src/acl.c;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_acl.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_ACL_LIBS}")
 
 endif()
@@ -157,17 +157,17 @@ set(TEST_JCONF_LIBS
     ss_cares
 )
 ss_add_test(test_jconf
-    "test_jconf.c;${PROJECT_SOURCE_DIR}/src/jconf.c;${PROJECT_SOURCE_DIR}/src/json.cpp;${PROJECT_SOURCE_DIR}/src/utils.c;${PROJECT_SOURCE_DIR}/src/netutils.c"
+    "test_jconf.c;${PROJECT_SOURCE_DIR}/src/jconf.cpp;${PROJECT_SOURCE_DIR}/src/json.cpp;${PROJECT_SOURCE_DIR}/src/utils.c;${PROJECT_SOURCE_DIR}/src/netutils.cpp"
     "${TEST_JCONF_LIBS};${SS_MATH_LIBRARY}")
 
 # Crypto sources shared by the tests that link the crypto layer. The AEAD-2022
 # ciphers pull in BLAKE3 (linked as the `blake3` target) and the session-based
-# UDP codec, so they must be built together with crypto.c.
+# UDP codec, so they must be built together with crypto.cpp.
 set(SS_CRYPTO_TEST_SOURCES
-    ${PROJECT_SOURCE_DIR}/src/crypto.c
-    ${PROJECT_SOURCE_DIR}/src/aead.c
-    ${PROJECT_SOURCE_DIR}/src/aead2022.c
-    ${PROJECT_SOURCE_DIR}/src/aead2022_udp.c
+    ${PROJECT_SOURCE_DIR}/src/crypto.cpp
+    ${PROJECT_SOURCE_DIR}/src/aead.cpp
+    ${PROJECT_SOURCE_DIR}/src/aead2022.cpp
+    ${PROJECT_SOURCE_DIR}/src/aead2022_udp.cpp
     ${PROJECT_SOURCE_DIR}/src/ppbloom.cpp
     ${PROJECT_SOURCE_DIR}/src/cache.cpp
     ${PROJECT_SOURCE_DIR}/src/base64.cpp
@@ -175,10 +175,10 @@ set(SS_CRYPTO_TEST_SOURCES
 )
 
 if(SS_ENABLE_LEGACY)
-    list(APPEND SS_CRYPTO_TEST_SOURCES ${PROJECT_SOURCE_DIR}/src/stream.c)
+    list(APPEND SS_CRYPTO_TEST_SOURCES ${PROJECT_SOURCE_DIR}/src/stream.cpp)
 endif()
 
-# test_buffer - needs sodium and mbedtls for crypto.c buffer functions
+# test_buffer - needs sodium and mbedtls for crypto.cpp buffer functions
 ss_add_test(test_buffer
     "test_buffer.c;${SS_CRYPTO_TEST_SOURCES}"
     "ss_sodium;;ss_mbedcrypto;ss_ev;${TEST_PPBLOOM_LIBS};blake3;${SS_MATH_LIBRARY}")
@@ -229,7 +229,7 @@ ss_add_test(test_process
 set_tests_properties(test_process PROPERTIES TIMEOUT 20)
 
 ss_add_test(test_resolv
-    "test_resolv.c;${PROJECT_SOURCE_DIR}/src/resolv.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_resolv.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "ss_ev;ss_cares;ss_sodium")
 set_tests_properties(test_resolv PROPERTIES TIMEOUT 20)
 
@@ -238,13 +238,13 @@ if(SS_ENABLE_REGEX)
     list(APPEND TEST_LITERAL_LIBS ss_pcre2)
 endif()
 ss_add_test(test_acl_literal
-    "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.c;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_LITERAL_LIBS}")
 
 ss_add_test(test_event "test_event.c" "ss_ev")
 set_tests_properties(test_event PROPERTIES TIMEOUT 30)
 ss_add_test(test_resolv_async
-    "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "ss_ev;ss_cares;ss_sodium")
 set_tests_properties(test_resolv_async PROPERTIES TIMEOUT 30)
 

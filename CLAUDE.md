@@ -103,23 +103,23 @@ A library `libshadowsocks-c` (legacy names `libshadowsocks-libev.*` are kept) is
 
 **Shared by all binaries:**
 - `utils.c` - logging, system utilities, `ss_malloc`/`ss_free`
-- `jconf.c` / `json.cpp` - JSON config file parsing
-- `netutils.c` - network address utilities
+- `jconf.cpp` / `json.cpp` - JSON config file parsing
+- `netutils.cpp` - network address utilities
 - `cache.cpp` - uthash-based connection cache (UDP relay, AEAD-2022 tables)
 - `udprelay.c` - UDP relay implementation (shared, but uses `#ifdef MODULE_*` for per-binary behavior)
 - `ss_event.c` / `ss_event.h` - event loop API over libuv
-- `resolv.c` - asynchronous DNS via c-ares
+- `resolv.cpp` - asynchronous DNS via c-ares
 
 **Crypto layer** (behind a common `crypto_t` function-pointer interface):
-- `crypto.c` / `crypto.h` - crypto initialization, key derivation (HKDF), `buffer_t` management
-- `stream.c` - legacy stream ciphers
-- `aead.c` - AEAD ciphers (AES-GCM via Mbed TLS/libsodium, ChaCha20-Poly1305 via libsodium)
-- `aead2022.c` / `aead2022_udp.c` - Shadowsocks 2022 (SIP022), BLAKE3 from `src/blake3`
+- `crypto.cpp` / `crypto.h` - crypto initialization, key derivation (HKDF), `buffer_t` management
+- `stream.cpp` - legacy stream ciphers
+- `aead.cpp` - AEAD ciphers (AES-GCM via Mbed TLS/libsodium, ChaCha20-Poly1305 via libsodium)
+- `aead2022.cpp` / `aead2022_udp.cpp` - Shadowsocks 2022 (SIP022), BLAKE3 from `src/blake3`
 - `ppbloom.cpp` - ping-pong bloom filter for salt replay detection (`third_party/bloom`)
 
-**ACL:** `acl.c` / `rule.cpp` / `ipset.cpp` - IP prefix sets and PCRE2/literal domain rules.
+**ACL:** `acl.cpp` / `rule.cpp` / `ipset.cpp` - IP prefix sets and PCRE2/literal domain rules.
 
-**Plugins:** `plugin.c` / `process.cpp` - SIP003 plugin subprocess management.
+**Plugins:** `plugin.cpp` / `process.cpp` - SIP003 plugin subprocess management.
 
 **C++ core:** `src/core/*.hpp` - header-only ownership and allocation primitives (pools, handles, fixed
 buffers, arena, fixed hash map/LRU, intrusive list, bounded heap). See `docs/cpp-core.md`.

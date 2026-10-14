@@ -98,13 +98,21 @@ def documented_options(source_name, sources):
     return result
 
 
+def module_source(sources, module):
+    """Source file name for a program module; modules move from .c to .cpp."""
+    for suffix in ('.c', '.cpp'):
+        if module + suffix in sources:
+            return module + suffix
+    raise ValueError(f"No source file for module {module}")
+
+
 def check(root=ROOT, rendered=None):
     sources = {path.name: path.read_text(encoding='utf-8')
-               for path in (root / 'src').glob('*.c')}
+               for pattern in ('*.c', '*.cpp') for path in (root / 'src').glob(pattern)}
     sources['ss-nat'] = (root / 'src/ss-nat').read_text(encoding='utf-8')
     for module in PROGRAMS:
         program = 'ss-' + module
-        filename = 'ss-nat' if module == 'nat' else module + '.c'
+        filename = 'ss-nat' if module == 'nat' else module_source(sources, module)
         declared = options(sources[filename], shell=module == 'nat')
         documented = documented_options(filename, sources)
         missing = declared.keys() - documented.keys()

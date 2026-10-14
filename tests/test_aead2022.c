@@ -19,7 +19,7 @@ int verbose = 0;
 #include "utils.h"
 #include "blake3/blake3.h"
 
-/* Provide nonce_cache symbol needed by crypto.c */
+/* Provide nonce_cache symbol needed by crypto.cpp */
 struct cache *nonce_cache = NULL;
 
 /* 32-byte and 16-byte PSKs in base64 */

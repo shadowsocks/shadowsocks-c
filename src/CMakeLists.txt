@@ -9,16 +9,16 @@ endif ()
 
 
 set(SS_ACL_SOURCE
-        acl.c
+        acl.cpp
         ipset.cpp
         rule.cpp
         )
 
 set(SS_CRYPTO_SOURCE
-        crypto.c
-        aead.c
-        aead2022.c
-        aead2022_udp.c
+        crypto.cpp
+        aead.cpp
+        aead2022.cpp
+        aead2022_udp.cpp
         base64.cpp
         )
 
@@ -40,20 +40,20 @@ target_compile_options(blake3 PRIVATE -Wno-error -Wno-unused-function)
 set_target_properties(blake3 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 if(SS_ENABLE_LEGACY)
-    list(APPEND SS_CRYPTO_SOURCE stream.c)
+    list(APPEND SS_CRYPTO_SOURCE stream.cpp)
 endif()
 if(SS_ENABLE_PLUGINS)
-    set(SS_PLUGIN_SOURCE plugin.c process.cpp)
+    set(SS_PLUGIN_SOURCE plugin.cpp process.cpp)
 else()
-    set(SS_PLUGIN_SOURCE plugin_disabled.c)
+    set(SS_PLUGIN_SOURCE plugin_disabled.cpp)
 endif()
 
 set(SS_SHARED_SOURCES
         ppbloom.cpp
         utils.c
-        jconf.c
+        jconf.cpp
         json.cpp
-        netutils.c
+        netutils.cpp
         )
 if (MINGW)
 set(SS_SHARED_SOURCES ${SS_SHARED_SOURCES} winsock.c)
@@ -64,7 +64,7 @@ set(LIBSHADOWSOCKS_LIBEV_SOURCE
         udprelay.c
         cache.cpp
         local.c
-        resolv.c
+        resolv.cpp
         ssurl.cpp
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}
@@ -89,7 +89,7 @@ set(SS_SERVER_SOURCE
         ${SS_SHARED_SOURCES}
         udprelay.c
         cache.cpp
-        resolv.c
+        resolv.cpp
         server.c
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}

@@ -14,7 +14,7 @@ readonly CONFIG_DIR="/etc/shadowsocks-libev"
 readonly SYSTEMD_UNIT_DIR="/etc/systemd/system"
 readonly SYSTEMD_TEMPLATE="shadowsocks-libev-server@.service"
 
-# AEAD ciphers supported by shadowsocks-libev (from src/aead.c)
+# AEAD ciphers supported by shadowsocks-libev (from src/aead.cpp)
 readonly AEAD_CIPHERS=(
     "chacha20-ietf-poly1305"
     "aes-256-gcm"

@@ -16,7 +16,12 @@ foreach(name IN LISTS DOC_NAMES)
 endforeach()
 set(DOC_SOURCES)
 foreach(name local server tunnel redir manager utils aead stream)
-    list(APPEND DOC_SOURCES "${PROJECT_SOURCE_DIR}/src/${name}.c")
+    # Modules are moving from C to C++ one at a time.
+    if(EXISTS "${PROJECT_SOURCE_DIR}/src/${name}.cpp")
+        list(APPEND DOC_SOURCES "${PROJECT_SOURCE_DIR}/src/${name}.cpp")
+    else()
+        list(APPEND DOC_SOURCES "${PROJECT_SOURCE_DIR}/src/${name}.c")
+    endif()
 endforeach()
 list(APPEND DOC_SOURCES "${PROJECT_SOURCE_DIR}/src/ss-nat")
 
