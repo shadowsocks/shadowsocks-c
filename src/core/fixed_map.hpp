@@ -3,7 +3,7 @@
 #define SS_CORE_FIXED_MAP_HPP
 
 // Fixed-capacity associative containers. Replace uthash (cache.cpp,
-// ss_event.c, manager.c) without any per-entry allocation.
+// ss_event.cpp, manager.cpp) without any per-entry allocation.
 //
 // FixedHashMap<K, V>
 //     Open addressing with linear probing and backward-shift deletion (no

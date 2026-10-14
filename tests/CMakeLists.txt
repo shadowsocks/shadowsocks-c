@@ -20,8 +20,8 @@ endif()
 
 # Helper function to add a unit test
 function(ss_add_test name sources libs)
-    if(WIN32 AND "${sources}" MATCHES "utils.c")
-        list(APPEND sources ${PROJECT_SOURCE_DIR}/src/winsock.c)
+    if(WIN32 AND "${sources}" MATCHES "utils.cpp")
+        list(APPEND sources ${PROJECT_SOURCE_DIR}/src/winsock.cpp)
     endif()
     add_executable(${name} ${sources})
     target_compile_definitions(${name} PRIVATE -DHAVE_CONFIG_H)
@@ -95,9 +95,9 @@ ss_add_test(test_base64
     "test_base64.c;${PROJECT_SOURCE_DIR}/src/base64.cpp"
     "")
 
-# test_utils - needs sodium (for ss_malloc -> uses sodium in utils.c)
+# test_utils - needs sodium (for ss_malloc -> uses sodium in utils.cpp)
 ss_add_test(test_utils
-    "test_utils.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_utils.c;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 # test_json - standalone json parser
@@ -107,7 +107,7 @@ ss_add_test(test_json
 
 # test_ssurl - ss:// URI parsing (SIP002 and legacy)
 ss_add_test(test_ssurl
-    "test_ssurl.c;${PROJECT_SOURCE_DIR}/src/ssurl.cpp;${PROJECT_SOURCE_DIR}/src/base64.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_ssurl.c;${PROJECT_SOURCE_DIR}/src/ssurl.cpp;${PROJECT_SOURCE_DIR}/src/base64.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 # test_netutils - address parsing and resolver integration
@@ -117,19 +117,19 @@ set(TEST_NETUTILS_LIBS
     ss_cares
 )
 ss_add_test(test_netutils
-    "test_netutils.c;${PROJECT_SOURCE_DIR}/src/netutils.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_netutils.c;${PROJECT_SOURCE_DIR}/src/netutils.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_NETUTILS_LIBS}")
 
 # test_cache - expiration uses a platform monotonic clock
 ss_add_test(test_cache
-    "test_cache.c;${PROJECT_SOURCE_DIR}/src/cache.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_cache.c;${PROJECT_SOURCE_DIR}/src/cache.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 # test_ppbloom - needs bloom
 set(TEST_PPBLOOM_LIBS "")
 list(APPEND TEST_PPBLOOM_LIBS bloom)
 ss_add_test(test_ppbloom
-    "test_ppbloom.c;${PROJECT_SOURCE_DIR}/src/ppbloom.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_ppbloom.c;${PROJECT_SOURCE_DIR}/src/ppbloom.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_PPBLOOM_LIBS};ss_sodium;${SS_MATH_LIBRARY}")
 
 if(SS_ENABLE_REGEX)
@@ -139,13 +139,13 @@ set(TEST_RULE_LIBS
     ss_sodium
 )
 ss_add_test(test_rule
-    "test_rule.c;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_rule.c;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_RULE_LIBS}")
 
 # test_acl - ACL precedence and prefix matching
 set(TEST_ACL_LIBS ${TEST_RULE_LIBS})
 ss_add_test(test_acl
-    "test_acl.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_acl.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_ACL_LIBS}")
 
 endif()
@@ -157,7 +157,7 @@ set(TEST_JCONF_LIBS
     ss_cares
 )
 ss_add_test(test_jconf
-    "test_jconf.c;${PROJECT_SOURCE_DIR}/src/jconf.cpp;${PROJECT_SOURCE_DIR}/src/json.cpp;${PROJECT_SOURCE_DIR}/src/utils.c;${PROJECT_SOURCE_DIR}/src/netutils.cpp"
+    "test_jconf.c;${PROJECT_SOURCE_DIR}/src/jconf.cpp;${PROJECT_SOURCE_DIR}/src/json.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp;${PROJECT_SOURCE_DIR}/src/netutils.cpp"
     "${TEST_JCONF_LIBS};${SS_MATH_LIBRARY}")
 
 # Crypto sources shared by the tests that link the crypto layer. The AEAD-2022
@@ -171,7 +171,7 @@ set(SS_CRYPTO_TEST_SOURCES
     ${PROJECT_SOURCE_DIR}/src/ppbloom.cpp
     ${PROJECT_SOURCE_DIR}/src/cache.cpp
     ${PROJECT_SOURCE_DIR}/src/base64.cpp
-    ${PROJECT_SOURCE_DIR}/src/utils.c
+    ${PROJECT_SOURCE_DIR}/src/utils.cpp
 )
 
 if(SS_ENABLE_LEGACY)
@@ -220,16 +220,16 @@ add_test(NAME test_ss_setup
 set_tests_properties(test_ss_setup PROPERTIES LABELS "integration")
 
 ss_add_test(test_ipset
-    "test_ipset.c;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_ipset.c;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 ss_add_test(test_process
-    "test_process.c;${PROJECT_SOURCE_DIR}/src/process.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_process.c;${PROJECT_SOURCE_DIR}/src/process.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 set_tests_properties(test_process PROPERTIES TIMEOUT 20)
 
 ss_add_test(test_resolv
-    "test_resolv.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_resolv.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_ev;ss_cares;ss_sodium")
 set_tests_properties(test_resolv PROPERTIES TIMEOUT 20)
 
@@ -238,13 +238,13 @@ if(SS_ENABLE_REGEX)
     list(APPEND TEST_LITERAL_LIBS ss_pcre2)
 endif()
 ss_add_test(test_acl_literal
-    "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_LITERAL_LIBS}")
 
 ss_add_test(test_event "test_event.c" "ss_ev")
 set_tests_properties(test_event PROPERTIES TIMEOUT 30)
 ss_add_test(test_resolv_async
-    "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_ev;ss_cares;ss_sodium")
 set_tests_properties(test_resolv_async PROPERTIES TIMEOUT 30)
 

@@ -22,7 +22,7 @@ For more information, check out shadowsocks-libev(8).
 
 Options include all supported platform variants; restrictions are noted below.
 
-\snippet{doc} tunnel.c cli-options
+\snippet{doc} tunnel.cpp cli-options
 
 \section ss_tunnel_example EXAMPLE
 

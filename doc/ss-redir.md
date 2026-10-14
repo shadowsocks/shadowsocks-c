@@ -23,7 +23,7 @@ For more information, check out shadowsocks-libev(8) and the following
 
 Options include all supported platform variants; restrictions are noted below.
 
-\snippet{doc} redir.c cli-options
+\snippet{doc} redir.cpp cli-options
 
 \section ss_redir_example EXAMPLE
 

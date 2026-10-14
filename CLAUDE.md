@@ -102,12 +102,12 @@ A library `libshadowsocks-c` (legacy names `libshadowsocks-libev.*` are kept) is
 ### Source Organization (`src/`)
 
 **Shared by all binaries:**
-- `utils.c` - logging, system utilities, `ss_malloc`/`ss_free`
+- `utils.cpp` - logging, system utilities, `ss_malloc`/`ss_free`
 - `jconf.cpp` / `json.cpp` - JSON config file parsing
 - `netutils.cpp` - network address utilities
 - `cache.cpp` - uthash-based connection cache (UDP relay, AEAD-2022 tables)
-- `udprelay.c` - UDP relay implementation (shared, but uses `#ifdef MODULE_*` for per-binary behavior)
-- `ss_event.c` / `ss_event.h` - event loop API over libuv
+- `udprelay.cpp` - UDP relay implementation (shared, but uses `#ifdef MODULE_*` for per-binary behavior)
+- `ss_event.cpp` / `ss_event.h` - event loop API over libuv
 - `resolv.cpp` - asynchronous DNS via c-ares
 
 **Crypto layer** (behind a common `crypto_t` function-pointer interface):

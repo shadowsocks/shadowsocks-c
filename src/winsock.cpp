@@ -1,5 +1,5 @@
 /*
- * winsock.c - Windows socket compatibility layer
+ * winsock.cpp - Windows socket compatibility layer
  *
  * Copyright (C) 2013 - 2019, Max Lv <max.c.lv@gmail.com>
  *

@@ -50,20 +50,20 @@ endif()
 
 set(SS_SHARED_SOURCES
         ppbloom.cpp
-        utils.c
+        utils.cpp
         jconf.cpp
         json.cpp
         netutils.cpp
         )
 if (MINGW)
-set(SS_SHARED_SOURCES ${SS_SHARED_SOURCES} winsock.c)
+set(SS_SHARED_SOURCES ${SS_SHARED_SOURCES} winsock.cpp)
 endif ()
 
 set(LIBSHADOWSOCKS_LIBEV_SOURCE
         ${SS_SHARED_SOURCES}
-        udprelay.c
+        udprelay.cpp
         cache.cpp
-        local.c
+        local.cpp
         resolv.cpp
         ssurl.cpp
         ${SS_CRYPTO_SOURCE}
@@ -78,19 +78,19 @@ set(SS_LOCAL_SOURCE
 
 set(SS_TUNNEL_SOURCE
         ${SS_SHARED_SOURCES}
-        udprelay.c
+        udprelay.cpp
         cache.cpp
-        tunnel.c
+        tunnel.cpp
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}
         )
 
 set(SS_SERVER_SOURCE
         ${SS_SHARED_SOURCES}
-        udprelay.c
+        udprelay.cpp
         cache.cpp
         resolv.cpp
-        server.c
+        server.cpp
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}
         ${SS_ACL_SOURCE}
@@ -98,14 +98,14 @@ set(SS_SERVER_SOURCE
 
 set(SS_MANAGER_SOURCE
         ${SS_SHARED_SOURCES}
-        manager.c
+        manager.cpp
         )
 
 set(SS_REDIR_SOURCE
         ${SS_SHARED_SOURCES}
-        udprelay.c
+        udprelay.cpp
         cache.cpp
-        redir.c
+        redir.cpp
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}
         )

@@ -10,9 +10,17 @@ src/crypto.cpp 4
 src/ipset.cpp 3
 src/jconf.cpp 16
 src/json.cpp 2
+src/local.cpp 16
+src/manager.cpp 14
 src/plugin.cpp 3
 src/process.cpp 26
+src/redir.cpp 15
 src/resolv.cpp 6
 src/rule.cpp 2
+src/server.cpp 17
+src/ss_event.cpp 5
 src/ssurl.cpp 3
 src/stream.cpp 3
+src/tunnel.cpp 14
+src/udprelay.cpp 7
+src/utils.cpp 10

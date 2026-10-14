@@ -1,5 +1,5 @@
 /*
- * udprelay.c - Setup UDP relay for both client and server
+ * udprelay.cpp - Setup UDP relay for both client and server
  *
  * Copyright (C) 2013 - 2019, Max Lv <max.c.lv@gmail.com>
  *

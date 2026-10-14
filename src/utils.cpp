@@ -1,5 +1,5 @@
 /*
- * utils.c - Misc utilities
+ * utils.cpp - Misc utilities
  *
  * Copyright (C) 2013 - 2019, Max Lv <max.c.lv@gmail.com>
  *
@@ -860,7 +860,7 @@ get_default_conf(void)
     // If not, fall back to the system-wide config.
     return sysconf;
 #else
-    return "config.json";
+    return (char *)"config.json";
 #endif
 }
 

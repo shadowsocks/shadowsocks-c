@@ -24,7 +24,7 @@ section.
 
 Options include all supported platform variants; restrictions are noted below.
 
-\snippet{doc} manager.c cli-options
+\snippet{doc} manager.cpp cli-options
 
 \section ss_manager_protocol PROTOCOL
 

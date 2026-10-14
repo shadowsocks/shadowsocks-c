@@ -21,7 +21,7 @@ For more information, check out shadowsocks-libev(8).
 
 Options include all supported platform variants; restrictions are noted below.
 
-\snippet{doc} local.c cli-options
+\snippet{doc} local.cpp cli-options
 
 \section ss_local_example EXAMPLE
 

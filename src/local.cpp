@@ -1,5 +1,5 @@
 /*
- * local.c - Setup a socks5 proxy through remote shadowsocks server
+ * local.cpp - Setup a socks5 proxy through remote shadowsocks server
  *
  * Copyright (C) 2013 - 2019, Max Lv <max.c.lv@gmail.com>
  *
@@ -1600,63 +1600,63 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 [cli_long_stat_path] */
 
 /* [cli-options]
-\snippet{doc} utils.c cli_short_f
-\snippet{doc} utils.c cli_short_s
-\snippet{doc} utils.c cli_short_p
-\snippet{doc} utils.c cli_short_l
-\snippet{doc} utils.c cli_short_k
-\snippet{doc} utils.c cli_short_t
-\snippet{doc} utils.c cli_short_m
-\snippet{doc} utils.c cli_short_i
-\snippet{doc} utils.c cli_short_c
-\snippet{doc} utils.c cli_short_b
-\snippet{doc} utils.c cli_short_a
-\snippet{doc} utils.c cli_short_n
-\snippet{doc} utils.c cli_short_S
-\snippet{doc} utils.c cli_short_h
-\snippet{doc} utils.c cli_short_u
-\snippet{doc} utils.c cli_short_U
-\snippet{doc} utils.c cli_short_v
-\snippet{doc} utils.c cli_short_V
-\snippet{doc} utils.c cli_short_6
-\snippet{doc} utils.c cli_short_A
-\snippet{doc} local.c cli_long_config
-\snippet{doc} local.c cli_long_cipher
-\snippet{doc} local.c cli_long_timeout
-\snippet{doc} local.c cli_long_user
-\snippet{doc} local.c cli_long_pid_file
-\snippet{doc} local.c cli_long_nofile
-\snippet{doc} local.c cli_long_udp
-\snippet{doc} local.c cli_long_udp_only
-\snippet{doc} local.c cli_long_ipv6_first
-\snippet{doc} local.c cli_long_verbose
-\snippet{doc} local.c cli_long_server
-\snippet{doc} local.c cli_long_server_port
-\snippet{doc} local.c cli_long_listen_address
-\snippet{doc} local.c cli_long_listen_port
-\snippet{doc} local.c cli_long_interface
-\snippet{doc} utils.c cli_long_version
-\snippet{doc} utils.c cli_long_tcp_only
-\snippet{doc} utils.c cli_long_ipv4_first
-\snippet{doc} local.c cli_long_vpn
-\snippet{doc} local.c cli_long_stat_path
-\snippet{doc} utils.c cli_long_reuse_port
-\snippet{doc} utils.c cli_long_tcp_incoming_sndbuf
-\snippet{doc} utils.c cli_long_tcp_incoming_rcvbuf
-\snippet{doc} utils.c cli_long_tcp_outgoing_sndbuf
-\snippet{doc} utils.c cli_long_tcp_outgoing_rcvbuf
-\snippet{doc} utils.c cli_long_fast_open
-\snippet{doc} utils.c cli_long_no_delay
-\snippet{doc} utils.c cli_long_acl
-\snippet{doc} utils.c cli_long_mtu
-\snippet{doc} utils.c cli_long_mptcp
-\snippet{doc} utils.c cli_long_plugin
-\snippet{doc} utils.c cli_long_plugin_opts
-\snippet{doc} utils.c cli_long_password
-\snippet{doc} utils.c cli_long_key
-\snippet{doc} utils.c cli_long_server_url
-\snippet{doc} utils.c cli_long_printable_salt
-\snippet{doc} utils.c cli_long_help
+\snippet{doc} utils.cpp cli_short_f
+\snippet{doc} utils.cpp cli_short_s
+\snippet{doc} utils.cpp cli_short_p
+\snippet{doc} utils.cpp cli_short_l
+\snippet{doc} utils.cpp cli_short_k
+\snippet{doc} utils.cpp cli_short_t
+\snippet{doc} utils.cpp cli_short_m
+\snippet{doc} utils.cpp cli_short_i
+\snippet{doc} utils.cpp cli_short_c
+\snippet{doc} utils.cpp cli_short_b
+\snippet{doc} utils.cpp cli_short_a
+\snippet{doc} utils.cpp cli_short_n
+\snippet{doc} utils.cpp cli_short_S
+\snippet{doc} utils.cpp cli_short_h
+\snippet{doc} utils.cpp cli_short_u
+\snippet{doc} utils.cpp cli_short_U
+\snippet{doc} utils.cpp cli_short_v
+\snippet{doc} utils.cpp cli_short_V
+\snippet{doc} utils.cpp cli_short_6
+\snippet{doc} utils.cpp cli_short_A
+\snippet{doc} local.cpp cli_long_config
+\snippet{doc} local.cpp cli_long_cipher
+\snippet{doc} local.cpp cli_long_timeout
+\snippet{doc} local.cpp cli_long_user
+\snippet{doc} local.cpp cli_long_pid_file
+\snippet{doc} local.cpp cli_long_nofile
+\snippet{doc} local.cpp cli_long_udp
+\snippet{doc} local.cpp cli_long_udp_only
+\snippet{doc} local.cpp cli_long_ipv6_first
+\snippet{doc} local.cpp cli_long_verbose
+\snippet{doc} local.cpp cli_long_server
+\snippet{doc} local.cpp cli_long_server_port
+\snippet{doc} local.cpp cli_long_listen_address
+\snippet{doc} local.cpp cli_long_listen_port
+\snippet{doc} local.cpp cli_long_interface
+\snippet{doc} utils.cpp cli_long_version
+\snippet{doc} utils.cpp cli_long_tcp_only
+\snippet{doc} utils.cpp cli_long_ipv4_first
+\snippet{doc} local.cpp cli_long_vpn
+\snippet{doc} local.cpp cli_long_stat_path
+\snippet{doc} utils.cpp cli_long_reuse_port
+\snippet{doc} utils.cpp cli_long_tcp_incoming_sndbuf
+\snippet{doc} utils.cpp cli_long_tcp_incoming_rcvbuf
+\snippet{doc} utils.cpp cli_long_tcp_outgoing_sndbuf
+\snippet{doc} utils.cpp cli_long_tcp_outgoing_rcvbuf
+\snippet{doc} utils.cpp cli_long_fast_open
+\snippet{doc} utils.cpp cli_long_no_delay
+\snippet{doc} utils.cpp cli_long_acl
+\snippet{doc} utils.cpp cli_long_mtu
+\snippet{doc} utils.cpp cli_long_mptcp
+\snippet{doc} utils.cpp cli_long_plugin
+\snippet{doc} utils.cpp cli_long_plugin_opts
+\snippet{doc} utils.cpp cli_long_password
+\snippet{doc} utils.cpp cli_long_key
+\snippet{doc} utils.cpp cli_long_server_url
+\snippet{doc} utils.cpp cli_long_printable_salt
+\snippet{doc} utils.cpp cli_long_help
 [cli-options] */
     static struct option long_options[] = {
         { "config", required_argument, NULL, 'c' },

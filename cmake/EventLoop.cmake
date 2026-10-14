@@ -1,4 +1,4 @@
-add_library(ss_ev STATIC ${PROJECT_SOURCE_DIR}/src/ss_event.c)
+add_library(ss_ev STATIC ${PROJECT_SOURCE_DIR}/src/ss_event.cpp)
 target_include_directories(ss_ev PUBLIC ${PROJECT_SOURCE_DIR}/src)
 target_link_libraries(ss_ev PUBLIC ss_uv Threads::Threads ${SS_MATH_LIBRARY} ${CMAKE_DL_LIBS})
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

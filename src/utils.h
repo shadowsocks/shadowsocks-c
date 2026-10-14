@@ -207,7 +207,7 @@ extern int use_syslog;
 #endif
 #define ERROR(s) ss_error(s)
 
-// Implemented in winsock.c
+// Implemented in winsock.cpp
 void ss_error(const char *s);
 void ss_color_info(void);
 void ss_color_error(void);
