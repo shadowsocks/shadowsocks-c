@@ -63,6 +63,18 @@ foreach(core_test result pool buffer arena fixed_map ownership)
     ss_strict_warnings(test_core_${core_test}.cpp)
 endforeach()
 
+# The embedding API on the static library (POSIX: the test uses BSD sockets).
+if(TARGET shadowsocks-c-static AND UNIX)
+    add_executable(test_local_api_cpp test_local_api_cpp.cpp)
+    target_link_libraries(test_local_api_cpp PRIVATE shadowsocks-c-static Threads::Threads)
+    target_compile_options(test_local_api_cpp PRIVATE -UNDEBUG)
+    target_include_directories(test_local_api_cpp PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    ss_project_options(test_local_api_cpp)
+    ss_strict_warnings(test_local_api_cpp.cpp)
+    add_test(NAME test_local_api_cpp COMMAND test_local_api_cpp)
+    set_tests_properties(test_local_api_cpp PROPERTIES LABELS "unit" TIMEOUT 60)
+endif()
+
 # C++ event layer (src/event) over libuv.
 ss_add_test(test_event_cpp "test_event_cpp.cpp" "ss_uv")
 ss_strict_warnings(test_event_cpp.cpp)

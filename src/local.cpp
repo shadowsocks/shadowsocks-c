@@ -41,6 +41,7 @@
 #endif
 #ifdef LIB_ONLY
 #include "shadowsocks.h"
+#include "shadowsocks/control.h"
 #endif
 
 #if defined(HAVE_SYS_IOCTL_H) && defined(HAVE_NET_IF_H) && defined(__linux__)
@@ -1332,6 +1333,144 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 
 #else
 
+// ------------------------------------------------------------ library API
+
+int _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udata);
+
+struct ss_local_handle {
+    profile_t profile;
+    ss_local_callback callback;
+    void *udata;
+    uv_thread_t thread;
+    int result;
+    bool waited;
+    bool stop_requested; // guarded by control_lock
+};
+
+namespace {
+
+// The running server's stop signal. ss_local_stop() and the server thread
+// take the lock around it, so a stop never wakes a loop that is gone.
+uv_mutex_t control_lock;
+uv_once_t control_once = UV_ONCE_INIT;
+uv_async_t *stop_signal         = NULL;
+ss_local_handle *running_handle = NULL;
+bool server_busy                = false;
+
+void control_init(void) { uv_mutex_init(&control_lock); }
+
+void on_stop_signal(uv_async_t *) { ss_unloop(SS_DEFAULT, SS_UNLOOP_ALL); }
+
+char *copy_string(const char *s)
+{
+    return s == NULL ? NULL : strdup(s); // heap-ok: startup, library only
+}
+
+void free_profile(profile_t *p)
+{
+    free(p->remote_host); // heap-ok: library API, startup
+    free(p->local_addr);  // heap-ok: library API, startup
+    free(p->method);      // heap-ok: library API, startup
+    free(p->password);    // heap-ok: library API, startup
+    free(p->acl);         // heap-ok: library API, startup
+    free(p->log);         // heap-ok: library API, startup
+}
+
+void server_thread(void *arg)
+{
+    ss_local_handle *h = (ss_local_handle *)arg;
+    h->result          = _start_ss_local_server(h->profile, h->callback, h->udata);
+    uv_mutex_lock(&control_lock);
+    running_handle = NULL;
+    server_busy    = false;
+    uv_mutex_unlock(&control_lock);
+}
+
+} // namespace
+
+extern "C" int
+ss_local_start(const profile_t *profile, ss_local_callback callback, void *udata, ss_local_handle **handle)
+{
+    if (profile == NULL || handle == NULL || profile->remote_host == NULL || profile->method == NULL
+        || profile->password == NULL) {
+        return EINVAL;
+    }
+    uv_once(&control_once, control_init);
+    uv_mutex_lock(&control_lock);
+    if (server_busy) {
+        uv_mutex_unlock(&control_lock);
+        return EBUSY;
+    }
+    ss_local_handle *h = (ss_local_handle *)calloc(1, sizeof(*h)); // heap-ok: startup, library only
+    if (h == NULL) {
+        uv_mutex_unlock(&control_lock);
+        return ENOMEM;
+    }
+    h->profile             = *profile;
+    h->profile.remote_host = copy_string(profile->remote_host);
+    h->profile.local_addr  = copy_string(profile->local_addr);
+    h->profile.method      = copy_string(profile->method);
+    h->profile.password    = copy_string(profile->password);
+    h->profile.acl         = copy_string(profile->acl);
+    h->profile.log         = copy_string(profile->log);
+    h->callback            = callback;
+    h->udata               = udata;
+    server_busy            = true;
+    running_handle         = h;
+    uv_mutex_unlock(&control_lock);
+    if (uv_thread_create(&h->thread, server_thread, h) != 0) {
+        uv_mutex_lock(&control_lock);
+        server_busy    = false;
+        running_handle = NULL;
+        uv_mutex_unlock(&control_lock);
+        free_profile(&h->profile);
+        free(h); // heap-ok: library API, startup
+        return ENOMEM;
+    }
+    *handle = h;
+    return 0;
+}
+
+extern "C" void
+ss_local_stop(ss_local_handle *handle)
+{
+    if (handle == NULL) {
+        return;
+    }
+    uv_once(&control_once, control_init);
+    uv_mutex_lock(&control_lock);
+    handle->stop_requested = true;
+    if (running_handle == handle && stop_signal != NULL) {
+        uv_async_send(stop_signal);
+    }
+    uv_mutex_unlock(&control_lock);
+}
+
+extern "C" int
+ss_local_wait(ss_local_handle *handle)
+{
+    if (handle == NULL) {
+        return EINVAL;
+    }
+    if (!handle->waited) {
+        uv_thread_join(&handle->thread);
+        handle->waited = true;
+    }
+    return handle->result;
+}
+
+extern "C" void
+ss_local_destroy(ss_local_handle *handle)
+{
+    if (handle == NULL) {
+        return;
+    }
+    ss_local_stop(handle);
+    (void)ss_local_wait(handle);
+    free_profile(&handle->profile);
+    free(handle); // heap-ok: library API, startup
+}
+
 int
 _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udata)
 {
@@ -1441,8 +1580,23 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
         callback(listen_fd, udp_fd, udata);
     }
 
+    // ss_local_stop() wakes the loop through this handle.
+    uv_async_t stop_async;
+    uv_async_init(ss_native_loop(loop), &stop_async, on_stop_signal);
+    uv_once(&control_once, control_init);
+    uv_mutex_lock(&control_lock);
+    bool stop_now = running_handle != NULL && running_handle->stop_requested;
+    stop_signal   = &stop_async;
+    uv_mutex_unlock(&control_lock);
+
     // Enter the loop
-    ss_run(loop, 0);
+    if (!stop_now)
+        ss_run(loop, 0);
+
+    uv_mutex_lock(&control_lock);
+    stop_signal = NULL;
+    uv_mutex_unlock(&control_lock);
+    uv_close((uv_handle_t *)&stop_async, NULL);
 
     if (verbose) {
         LOGI("closed gracefully");
