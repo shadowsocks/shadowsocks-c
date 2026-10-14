@@ -27,7 +27,7 @@ import threading
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from interop import TCPHandler, TCPOrigin, free_port, peers, tcp_case  # noqa: E402
+from interop import TCPHandler, TCPOrigin, free_port, peers, receive, socks  # noqa: E402
 
 
 def read_snapshot(path, previous_lines, timeout=10):
@@ -50,9 +50,18 @@ def snapshot_all(processes, outputs, counts):
     return results
 
 
-def relay(local_port, origin_port, connections, concurrency, size):
+def tcp_case(local_port, target, origin_port, size):
+    sock, _ = socks(local_port, 1, (target, origin_port))
+    payload = os.urandom(size)
+    with sock, concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        upload = pool.submit(sock.sendall, payload)
+        assert receive(sock, len(payload)) == payload, "TCP payload mismatch"
+        upload.result(timeout=10)
+
+
+def relay(local_port, target, origin_port, connections, concurrency, size):
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrency) as pool:
-        futures = [pool.submit(tcp_case, local_port, origin_port, size) for _ in range(connections)]
+        futures = [pool.submit(tcp_case, local_port, target, origin_port, size) for _ in range(connections)]
         for future in futures:
             future.result(timeout=60)
 
@@ -67,6 +76,8 @@ def main():
     parser.add_argument("--concurrency", type=int, default=10)
     parser.add_argument("--size", type=int, default=16384, help="bytes echoed per connection")
     parser.add_argument("--max-per-connection", type=float, help="fail if any peer exceeds this")
+    parser.add_argument("--target", default="localhost",
+                        help="destination host sent to the server; a name makes the server resolve it")
     parser.add_argument("--json", action="store_true", help="print the result as JSON")
     args = parser.parse_args()
 
@@ -101,10 +112,10 @@ def main():
                 peers([commands[1]], [local_port], environments[1]) as local:
             processes = server + local
             counts = [0, 0]
-            relay(local_port, origin.server_address[1], args.warmup, args.concurrency, args.size)
+            relay(local_port, args.target, origin.server_address[1], args.warmup, args.concurrency, args.size)
             time.sleep(.5)
             before = snapshot_all(processes, outputs, counts)
-            relay(local_port, origin.server_address[1], args.connections, args.concurrency, args.size)
+            relay(local_port, args.target, origin.server_address[1], args.connections, args.concurrency, args.size)
             time.sleep(.5)
             after = snapshot_all(processes, outputs, counts)
 
@@ -125,7 +136,7 @@ def main():
     if args.json:
         print(json.dumps(report, indent=2))
     else:
-        print(f"method {args.method}, {args.connections} connections of {args.size} bytes")
+        print(f"method {args.method}, {args.connections} connections of {args.size} bytes to {args.target}")
         for name, peer in report["peers"].items():
             print(f"  {name:9} {peer['allocations_per_connection']:8.2f} allocations/connection "
                   f"({peer['allocations']} total, {peer['bytes']} bytes)")
