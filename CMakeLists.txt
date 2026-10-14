@@ -6,7 +6,7 @@ set(PROJECT_VERSION "3.3.6")
 set(PROJECT_DESC "a lightweight secured socks5 proxy")
 set(PROJECT_URL "https://shadowsocks.org")
 set(PROJECT_ISSUES_URL "https://github.com/shadowsocks/shadowsocks-libev")
-project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES C)
+project(${PROJECT_NAME} VERSION ${PROJECT_VERSION} LANGUAGES C CXX)
 if(MSVC)
     message(FATAL_ERROR "MSVC is not supported yet. Use MinGW-w64 (UCRT64) or the Zig Windows toolchain; see docs/modernization.md.")
 endif()
@@ -22,6 +22,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS ON)
+
+# The C++20 core (src/core) is being introduced module by module; see
+# docs/cpp-core.md. It is built without exceptions or RTTI, so it adds
+# no unwinding tables or typeinfo to the static binaries.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(ENABLE_SANITIZERS "Build with AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
 option(ENABLE_COVERAGE "Build with coverage instrumentation" OFF)

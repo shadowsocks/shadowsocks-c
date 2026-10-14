@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Build Clang static-only installation
         run: |
-          cmake -S . -B build-static -DCMAKE_C_COMPILER=clang -DSS_DEPENDENCY_MODE=bundled -DWITH_STATIC=ON -DSS_BUILD_STATIC_LIBRARY=ON -DSS_BUILD_SHARED_LIBRARY=OFF
+          cmake -S . -B build-static -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DSS_DEPENDENCY_MODE=bundled -DWITH_STATIC=ON -DSS_BUILD_STATIC_LIBRARY=ON -DSS_BUILD_SHARED_LIBRARY=OFF
           cmake --build build-static --parallel 4
           ctest --test-dir build-static -L 'unit|vendor' --output-on-failure --no-tests=error
           cmake --install build-static --prefix "$PWD/install-static"
@@ -135,7 +135,7 @@ jobs:
             mingw-w64-clang-x86_64-python
       - name: Build Clang static-only installation
         run: |
-          cmake -S . -B build-static -G Ninja -DCMAKE_C_COMPILER=clang -DSS_DEPENDENCY_MODE=bundled -DWITH_STATIC=ON -DSS_BUILD_STATIC_LIBRARY=ON -DSS_BUILD_SHARED_LIBRARY=OFF
+          cmake -S . -B build-static -G Ninja -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DSS_DEPENDENCY_MODE=bundled -DWITH_STATIC=ON -DSS_BUILD_STATIC_LIBRARY=ON -DSS_BUILD_SHARED_LIBRARY=OFF
           cmake --build build-static --parallel 4
           ctest --test-dir build-static -L 'unit|vendor' --output-on-failure --no-tests=error
           cmake --install build-static --prefix "$PWD/install-static"

@@ -1,9 +1,10 @@
-# Cross-compile the C project from a Unix host without Docker or a MinGW SDK.
+# Cross-compile the project from a Unix host without Docker or a MinGW SDK.
 # cmake -S . -B build-windows -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/zig-windows.cmake
 set(CMAKE_SYSTEM_NAME Windows)
 set(CMAKE_SYSTEM_PROCESSOR AMD64)
 find_program(SS_ZIG_EXECUTABLE NAMES zig REQUIRED)
 set(CMAKE_C_COMPILER "${SS_ZIG_EXECUTABLE}" cc -target x86_64-windows-gnu)
+set(CMAKE_CXX_COMPILER "${SS_ZIG_EXECUTABLE}" c++ -target x86_64-windows-gnu)
 # CMake's archive tools accept an executable path, not an argv list.
 file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/zig-tools")
 foreach(tool ar ranlib)

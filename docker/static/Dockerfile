@@ -2,8 +2,8 @@ ARG ALPINE_IMAGE=alpine:3.24
 FROM ${ALPINE_IMAGE} AS build
 ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
 RUN sed -i "s|https://dl-cdn.alpinelinux.org/alpine|${ALPINE_MIRROR}|g" /etc/apk/repositories \
- && apk add --no-cache clang lld make musl-dev compiler-rt cmake linux-headers python3 binutils file
-ENV CC=clang
+ && apk add --no-cache clang lld make musl-dev compiler-rt libstdc++-dev cmake linux-headers python3 binutils file
+ENV CC=clang CXX=clang++
 WORKDIR /src
 COPY . .
 ARG SS_MINIMAL=OFF

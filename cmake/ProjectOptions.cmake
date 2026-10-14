@@ -25,6 +25,10 @@ function(ss_project_options target)
         endif()
     else()
         target_compile_options(${target} PRIVATE -Wall -Wno-deprecated-declarations -fno-strict-aliasing)
+        # C++ sources: no exceptions or RTTI, and no locks around function
+        # statics (the event loop is single-threaded).
+        target_compile_options(${target} PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wextra -fno-exceptions -fno-rtti -fno-threadsafe-statics>)
         if(SS_WARNINGS_AS_ERRORS)
             target_compile_options(${target} PRIVATE -Werror)
         endif()

@@ -27,7 +27,7 @@ License:	    GPLv3+
 URL:		    https://github.com/shadowsocks/%{name}
 Source0:	    @SOURCE@
 
-BuildRequires:	make gcc pcre-devel asciidoc xmlto automake libtool mbedtls-devel libsodium-devel >= 1.0.4 libev-devel c-ares-devel
+BuildRequires:	make gcc gcc-c++ pcre-devel asciidoc xmlto automake libtool mbedtls-devel libsodium-devel >= 1.0.4 libev-devel c-ares-devel
 %if 0%{?suse_version}
 BuildRequires:  libopenssl-devel
 %else
