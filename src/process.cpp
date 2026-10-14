@@ -164,7 +164,7 @@ wide_string(const char *text)
 {
     int count = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
     if (count == 0) return NULL;
-    wchar_t *wide = ss_malloc((size_t)count * sizeof(wchar_t));
+    wchar_t *wide = (wchar_t *)ss_malloc((size_t)count * sizeof(wchar_t));
     if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, text, -1, wide, count)) {
         free(wide);
         return NULL;
@@ -175,7 +175,7 @@ wide_string(const char *text)
 static DWORD WINAPI
 monitor_process(void *argument)
 {
-    struct ss_process *process = argument;
+    struct ss_process *process = (struct ss_process *)argument;
     WaitForSingleObject(process->child, INFINITE);
     if (process->control_port != 0) {
         SOCKET fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -207,11 +207,11 @@ sort_environment(wchar_t *env)
         count++;
         length += wcslen(entry) + 1;
     }
-    wchar_t **entries = ss_malloc((count + 1) * sizeof(*entries));
+    wchar_t **entries = (wchar_t **)ss_malloc((count + 1) * sizeof(*entries));
     size_t index = 0;
     for (wchar_t *entry = env; *entry; entry += wcslen(entry) + 1) entries[index++] = entry;
     qsort(entries, count, sizeof(*entries), compare_environment);
-    wchar_t *sorted = ss_malloc((length + 1) * sizeof(*sorted)), *out = sorted;
+    wchar_t *sorted = (wchar_t *)ss_malloc((length + 1) * sizeof(*sorted)), *out = sorted;
     for (size_t i = 0; i < count; i++) {
         size_t size = wcslen(entries[i]) + 1;
         memcpy(out, entries[i], size * sizeof(*out));
@@ -231,7 +231,7 @@ ss_process_start(struct ss_process *process, uint16_t control_port)
      * Double backslashes before a quote or the closing quote. */
     size_t capacity = 1;
     for (size_t i = 0; i < process->argc; i++) capacity += 2 * strlen(process->argv[i]) + 4;
-    char *command = ss_malloc(capacity), *out = command;
+    char *command = (char *)ss_malloc(capacity), *out = command;
     for (size_t i = 0; i < process->argc; i++) {
         if (i != 0) *out++ = ' ';
         *out++ = '"';
@@ -254,7 +254,7 @@ ss_process_start(struct ss_process *process, uint16_t control_port)
 
     wchar_t *inherited = GetEnvironmentStringsW();
     if (inherited == NULL) { free(wide_command); return -1; }
-    wchar_t **overrides = ss_malloc((process->envc + 1) * sizeof(wchar_t *));
+    wchar_t **overrides = (wchar_t **)ss_malloc((process->envc + 1) * sizeof(wchar_t *));
     size_t total = 2;
     for (const wchar_t *entry = inherited; *entry; entry += wcslen(entry) + 1) total += wcslen(entry) + 1;
     for (size_t i = 0; i < process->envc; i++) {
@@ -266,7 +266,7 @@ ss_process_start(struct ss_process *process, uint16_t control_port)
         }
         total += wcslen(overrides[i]) + 1;
     }
-    wchar_t *env = ss_malloc(total * sizeof(wchar_t)), *dest = env;
+    wchar_t *env = (wchar_t *)ss_malloc(total * sizeof(wchar_t)), *dest = env;
     for (const wchar_t *entry = inherited; *entry; entry += wcslen(entry) + 1) {
         const wchar_t *equals = wcschr(entry, L'=');
         bool replace = false;
@@ -292,7 +292,7 @@ ss_process_start(struct ss_process *process, uint16_t control_port)
     PROCESS_INFORMATION child = {0};
     startup.cb = sizeof(startup);
     process->job = CreateJobObjectW(NULL, NULL);
-    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {0};
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits = {};
     limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
     BOOL ok = process->job != NULL && SetInformationJobObject(process->job,
         JobObjectExtendedLimitInformation, &limits, sizeof(limits));
