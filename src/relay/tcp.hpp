@@ -159,6 +159,7 @@ private:
     bool dns_ok_       = false;
     bool replied_      = false; // first upstream bytes reached the client
     void *hook_state_  = nullptr;
+    int tos_           = -1; // from the listener that accepted it
     sockaddr_storage dns_answer_{};
 };
 
@@ -172,7 +173,8 @@ public:
     // `resolver` is needed by ss-server and by ss-local with an ACL.
     Status init(event::Loop &loop, Method &method, const TcpConfig &config, Resolver *resolver) noexcept;
     // Start accepting on a bound, listening socket; the relay owns it now.
-    Status listen(ss_socket_t fd) noexcept;
+    // Upstream connections of its clients get IP TOS `tos` when >= 0.
+    Status listen(ss_socket_t fd, int tos = -1) noexcept;
 
     // Close every connection and listener. Run the loop until closed().
     void shutdown() noexcept;
@@ -186,6 +188,7 @@ private:
 
     struct Listener {
         TcpRelay *relay = nullptr;
+        int tos         = -1;
         event::Flow on_ready(int events) noexcept;
         event::Poll<Listener, &Listener::on_ready> poll;
     };

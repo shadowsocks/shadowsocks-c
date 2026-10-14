@@ -145,7 +145,7 @@ Status TcpRelay::init(event::Loop &loop, Method &method, const TcpConfig &config
     return {};
 }
 
-Status TcpRelay::listen(ss_socket_t fd) noexcept
+Status TcpRelay::listen(ss_socket_t fd, int tos) noexcept
 {
     if (listener_count_ == kMaxListeners || loop_ == nullptr) {
         return fail(Errc::exhausted);
@@ -153,6 +153,7 @@ Status TcpRelay::listen(ss_socket_t fd) noexcept
     SS_TRY(set_nonblocking(fd));
     Listener &l = listeners_[listener_count_];
     l.relay     = this;
+    l.tos       = tos;
     SS_TRY(l.poll.open(*loop_, l, fd));
     ++listener_count_;
     return l.poll.want(event::readable);
@@ -210,6 +211,7 @@ void TcpRelay::accept_from(Listener &listener) noexcept
         Connection &c   = **conn;
         std::uint32_t at = pool_.handle_of(&c).index;
         owners_[at]     = std::move(*conn);
+        c.tos_          = listener.tos;
         (void)c.start(fd);
     }
 }
@@ -802,8 +804,13 @@ Flow Connection::start_upstream(const sockaddr *target, bool direct) noexcept
         (void)to_upstream_.commit(*w);
     }
 
-    bool protect = cfg.vpn && !loopback_v4(target);
-    auto fd      = open_upstream(target->sa_family, cfg.upstream, protect);
+    bool protect        = cfg.vpn && !loopback_v4(target);
+    SocketTuning tuning = cfg.upstream;
+    if (tos_ >= 0) {
+        tuning.tos = tos_;
+    }
+    auto fd             = open_upstream(target->sa_family, tuning, protect);
+    cfg.upstream.mptcp  = tuning.mptcp; // remember the option that worked
     if (!fd) {
         return close();
     }

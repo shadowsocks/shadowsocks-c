@@ -62,10 +62,10 @@
 #include "crypto.h"
 #include "jconf.h"
 #include "common.h"
-#include "udprelay.h"
 #include "ss_windows.h"
 
 #include "relay/tcp.hpp"
+#include "relay/udp.hpp"
 
 #undef min
 #undef max
@@ -104,7 +104,6 @@ ss_tstamp last = 0;
 char *stat_path   = NULL;
 #endif
 
-static crypto_t *crypto;
 
 static int acl       = 0;
 static int mode      = TCP_ONLY;
@@ -270,28 +269,35 @@ stat_update_cb()
 
 #endif
 
-// The TCP side of ss-local: the relay engine on the ss_event loop, plus a
-// resolver for host-name ACL rules.
+// The relays of ss-local on the ss_event loop: TCP (with a resolver for
+// host-name ACL rules) and UDP, sharing one cipher configuration.
 namespace {
 
-struct TcpSide {
+struct Relays {
     ss::event::Loop loop;
     ss::relay::Method method;
     ss::relay::Resolver resolver;
-    ss::relay::TcpRelay relay;
+    ss::relay::TcpRelay tcp;
+    ss::relay::UdpRelay udp;
     bool resolving = false;
-    bool running   = false;
+    bool tcp_on    = false;
+    bool udp_on    = false;
 
-    bool start(struct ss_loop *ss_loop, const char *cipher, const char *pass, const char *key,
-               ss::relay::TcpConfig &config, int listenfd)
+    bool init(struct ss_loop *ss_loop, const char *cipher, const char *pass, const char *key)
     {
         if (!loop.adopt(ss_native_loop(ss_loop))) {
             return false;
         }
+        LOGI("initializing ciphers... %s", cipher);
         if (!method.init(cipher, pass, key, ss::crypto::Role::client)) {
             LOGE("failed to initialize ciphers");
             return false;
         }
+        return true;
+    }
+
+    bool start_tcp(ss::relay::TcpConfig &config, int listenfd)
+    {
         if (config.acl) {
             config.acl_hooks.match_host       = &acl_match_host;
             config.acl_hooks.mode             = &get_acl_mode;
@@ -301,27 +307,60 @@ struct TcpSide {
             }
             resolving = true;
         }
-        if (!relay.init(loop, method, config, resolving ? &resolver : NULL) || !relay.listen(listenfd)) {
+        if (!tcp.init(loop, method, config, resolving ? &resolver : NULL) || !tcp.listen(listenfd)) {
             return false;
         }
-        running = true;
+        tcp_on = true;
         return true;
+    }
+
+    // Returns the UDP socket, or -1.
+    int start_udp(const char *host, const char *port, const struct sockaddr_storage *remote, int mtu, int timeout,
+                  const char *iface)
+    {
+        ss::relay::UdpConfig config;
+        config.kind         = ss::relay::Kind::local;
+        config.remote       = *remote;
+        config.timeout_secs = timeout;
+        config.max_sessions = 256;
+        config.mtu          = mtu;
+        config.iface        = iface;
+#ifdef __ANDROID__
+        config.vpn        = vpn != 0;
+        config.protect    = protect_socket;
+        config.tx         = &tx;
+        config.rx         = &rx;
+        config.on_traffic = &stat_update_cb;
+#endif
+        auto fd = ss::relay::open_udp_listener(host, port, false, reuse_port != 0);
+        if (!fd || !udp.init(loop, method, config, NULL)) {
+            return -1;
+        }
+        if (!udp.listen(*fd)) {
+            ss_socket_close(*fd);
+            return -1;
+        }
+        udp_on = true;
+        return (int)*fd;
     }
 
     void stop()
     {
-        if (running) {
-            relay.shutdown();
+        if (tcp_on) {
+            tcp.shutdown();
+        }
+        if (udp_on) {
+            udp.shutdown();
         }
         static bool resolver_closed;
         resolver_closed = !resolving;
         if (resolving) {
             resolver.shutdown(ss::CloseCompletion([](void *, uint32_t) { resolver_closed = true; }, NULL, 0));
         }
-        while ((running && !relay.closed()) || !resolver_closed) {
+        while ((tcp_on && !tcp.closed()) || (udp_on && !udp.closed()) || !resolver_closed) {
             loop.run_nowait();
         }
-        running = resolving = false;
+        tcp_on = udp_on = resolving = false;
     }
 };
 
@@ -1138,9 +1177,8 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 #endif
 
     // Setup keys
-    LOGI("initializing ciphers... %s", method);
-    crypto = crypto_init(password, key, method);
-    if (crypto == NULL)
+    Relays relays;
+    if (!relays.init(SS_DEFAULT, method, password, key))
         FATAL("failed to initialize ciphers");
 
     // Setup proxy context
@@ -1165,7 +1203,6 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
     }
     ss::relay::TcpConfig tcp_config;
     fill_tcp_config(tcp_config, remote_storage, remote_count, timeout_secs, mptcp, iface);
-    TcpSide tcp;
 
     // Setup signal handler
     ss_signal_init(&sigint_watcher, signal_cb, SIGINT);
@@ -1198,7 +1235,7 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
         if (listen(listenfd, SOMAXCONN) == -1) {
             FATAL("listen() error");
         }
-        if (!tcp.start(loop, method, password, key, tcp_config, listenfd)) {
+        if (!relays.start_tcp(tcp_config, listenfd)) {
             FATAL("failed to set up the TCP relay");
         }
     }
@@ -1206,16 +1243,14 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
     // Setup UDP
     if (mode != TCP_ONLY) {
         LOGI("udprelay enabled");
-        char *host                       = remote_addr[0].host;
-        char *port                       = remote_addr[0].port == NULL ? remote_port : remote_addr[0].port;
-        struct sockaddr_storage *storage = (struct sockaddr_storage *)ss_malloc(sizeof(struct sockaddr_storage));
-        memset(storage, 0, sizeof(struct sockaddr_storage));
-        if (get_sockaddr(host, port, storage, 1, ipv6first) == -1) {
+        char *host = remote_addr[0].host;
+        char *port = remote_addr[0].port == NULL ? remote_port : remote_addr[0].port;
+        struct sockaddr_storage udp_remote;
+        memset(&udp_remote, 0, sizeof(udp_remote));
+        if (get_sockaddr(host, port, &udp_remote, 1, ipv6first) == -1) {
             FATAL("failed to resolve the provided hostname");
         }
-        struct sockaddr *addr = (struct sockaddr *)storage;
-        udp_fd = init_udprelay(local_addr, local_port, addr,
-                               get_sockaddr_len(addr), mtu, crypto, timeout_secs, iface);
+        udp_fd = relays.start_udp(local_addr, local_port, &udp_remote, mtu, timeout_secs, iface);
         if (udp_fd == -1) {
             FATAL("failed to initialize UDP relay");
         }
@@ -1250,11 +1285,7 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
         stop_plugin();
     }
 
-    tcp.stop();
-
-    if (mode != TCP_ONLY) {
-        free_udprelay();
-    }
+    relays.stop();
     ss_loop_destroy(loop);
 
 #ifdef __MINGW32__
@@ -1326,9 +1357,8 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
 #endif
 
     // Setup keys
-    LOGI("initializing ciphers... %s", method);
-    crypto = crypto_init(password, NULL, method);
-    if (crypto == NULL)
+    Relays relays;
+    if (!relays.init(SS_DEFAULT, method, password, NULL))
         FATAL("failed to init ciphers");
 
     struct sockaddr_storage storage;
@@ -1341,7 +1371,6 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
     struct ss_loop *loop = SS_DEFAULT;
     ss::relay::TcpConfig tcp_config;
     fill_tcp_config(tcp_config, &storage, 1, timeout, mptcp, NULL);
-    TcpSide tcp;
     int listen_fd = -1; // stays -1 in UDP_ONLY mode but is still passed to the callback below
 
     if (ss_is_ipv6addr(local_addr))
@@ -1361,7 +1390,7 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
             ERROR("listen()");
             return -1;
         }
-        if (!tcp.start(loop, method, password, NULL, tcp_config, listenfd)) {
+        if (!relays.start_tcp(tcp_config, listenfd)) {
             LOGE("failed to set up the TCP relay");
             return -1;
         }
@@ -1371,9 +1400,7 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
     // Setup UDP
     if (mode != TCP_ONLY) {
         LOGI("udprelay enabled");
-        struct sockaddr *addr = (struct sockaddr *)(&storage);
-        udp_fd = init_udprelay(local_addr, local_port_str, addr,
-                               get_sockaddr_len(addr), mtu, crypto, timeout, NULL);
+        udp_fd = relays.start_udp(local_addr, local_port_str, &storage, mtu, timeout, NULL);
         if (udp_fd == -1) {
             return -1;
         }
@@ -1391,11 +1418,7 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
     }
 
     // Clean up
-    tcp.stop();
-
-    if (mode != TCP_ONLY) {
-        free_udprelay();
-    }
+    relays.stop();
     ss_loop_destroy(loop);
 
 #ifdef __MINGW32__

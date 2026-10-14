@@ -5,6 +5,8 @@
 #include <cstring>
 
 #include "crypto.h"
+#include "ppbloom.h"
+#include "utils.h"
 
 // crypto.h defines min/max macros for the C sources.
 #undef min
@@ -17,7 +19,19 @@ Status Method::init(const char *method, const char *password, const char *key, R
     if (method == nullptr) {
         return fail(Errc::config);
     }
+    if (sodium_init() == -1) {
+        return fail(Errc::crypto);
+    }
     role_ = role;
+    // The salt/IV replay filter shared by every connection and datagram.
+    if (!bloom_ready_) {
+        if (role == Role::server) {
+            ppbloom_init(BF_NUM_ENTRIES_FOR_SERVER, BF_ERROR_RATE_FOR_SERVER);
+        } else {
+            ppbloom_init(BF_NUM_ENTRIES_FOR_CLIENT, BF_ERROR_RATE_FOR_CLIENT);
+        }
+        bloom_ready_ = true;
+    }
     if (auto spec = crypto::find_aead2022(method)) {
         // The password field may carry the base64 PSK too.
         SS_TRY_ASSIGN(psk, crypto::Psk::from_base64(*spec, key != nullptr ? key : password));
@@ -36,6 +50,7 @@ Status Method::init(const char *method, const char *password, const char *key, R
     }
 #if SS_ENABLE_LEGACY
     if (auto spec = crypto::find_stream(method)) {
+        LOGI("Stream ciphers are insecure, therefore deprecated, and should be almost always avoided.");
         if (key != nullptr) {
             crypto::StreamKey stream{ *spec, {} };
             if (crypto_parse_key(key, stream.bytes.data(), spec->key_len) != spec->key_len) {
@@ -50,6 +65,13 @@ Status Method::init(const char *method, const char *password, const char *key, R
     }
 #endif
     return fail(Errc::config);
+}
+
+Method::~Method()
+{
+    if (bloom_ready_) {
+        ppbloom_free();
+    }
 }
 
 Status Encoder::init(Method &method, bool plain, const Decoder *peer, bool printable_salt) noexcept

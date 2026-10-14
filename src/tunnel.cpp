@@ -56,10 +56,10 @@
 #include "crypto.h"
 #include "jconf.h"
 #include "common.h"
-#include "udprelay.h"
 #include "ss_windows.h"
 
 #include "relay/tcp.hpp"
+#include "relay/udp.hpp"
 
 #undef min
 #undef max
@@ -105,7 +105,6 @@ int tcp_incoming_rcvbuf = 0;
 int tcp_outgoing_sndbuf = 0;
 int tcp_outgoing_rcvbuf = 0;
 
-static crypto_t *crypto;
 
 static int ipv6first = 0;
 static int mode      = TCP_ONLY;
@@ -933,8 +932,8 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
 
     // Setup keys
     LOGI("initializing ciphers... %s", method);
-    crypto = crypto_init(password, key, method);
-    if (crypto == NULL)
+    ss::relay::Method relay_method;
+    if (!relay_method.init(method, password, key, ss::crypto::Role::client))
         FATAL("failed to initialize ciphers");
 
     // Setup proxy context
@@ -987,17 +986,14 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
 
     struct ss_loop *loop = SS_DEFAULT;
     ss::event::Loop tcp_loop;
-    ss::relay::Method tcp_method;
     ss::relay::TcpRelay tcp_relay;
+    ss::relay::UdpRelay udp_relay;
     if (!tcp_loop.adopt(ss_native_loop(loop))) {
         FATAL("failed to set up the event loop");
     }
 
     if (mode != UDP_ONLY) {
-        if (!tcp_method.init(method, password, key, ss::crypto::Role::client)) {
-            FATAL("failed to initialize ciphers");
-        }
-        if (!tcp_relay.init(tcp_loop, tcp_method, tcp_config, NULL)) {
+        if (!tcp_relay.init(tcp_loop, relay_method, tcp_config, NULL)) {
             FATAL("failed to set up the TCP relay");
         }
         // Setup socket
@@ -1017,16 +1013,25 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     // Setup UDP
     if (mode != TCP_ONLY) {
         LOGI("UDP relay enabled");
-        char *host                       = remote_addr[0].host;
-        char *port                       = remote_addr[0].port == NULL ? remote_port : remote_addr[0].port;
-        struct sockaddr_storage *storage = (struct sockaddr_storage *)ss_malloc(sizeof(struct sockaddr_storage));
-        memset(storage, 0, sizeof(struct sockaddr_storage));
-        if (get_sockaddr(host, port, storage, 1, ipv6first) == -1) {
+        char *host = remote_addr[0].host;
+        char *port = remote_addr[0].port == NULL ? remote_port : remote_addr[0].port;
+        ss::relay::UdpConfig udp_config;
+        udp_config.kind              = ss::relay::Kind::tunnel;
+        udp_config.tunnel_target     = tcp_config.tunnel_target;
+        udp_config.tunnel_target_len = tcp_config.tunnel_target_len;
+        udp_config.timeout_secs      = timeout_secs;
+        udp_config.max_sessions      = 256;
+        udp_config.mtu               = mtu;
+        udp_config.iface             = iface;
+#ifdef __ANDROID__
+        udp_config.vpn     = vpn != 0;
+        udp_config.protect = protect_socket;
+#endif
+        if (get_sockaddr(host, port, &udp_config.remote, 1, ipv6first) == -1) {
             FATAL("failed to resolve the provided hostname");
         }
-        struct sockaddr *addr = (struct sockaddr *)storage;
-        if (init_udprelay(local_addr, local_port, addr, get_sockaddr_len(addr),
-                          tunnel_addr, mtu, crypto, timeout_secs, iface) == -1) {
+        auto udp_fd = ss::relay::open_udp_listener(local_addr, local_port, false, reuse_port != 0);
+        if (!udp_fd || !udp_relay.init(tcp_loop, relay_method, udp_config, NULL) || !udp_relay.listen(*udp_fd)) {
             FATAL("failed to initialize UDP relay");
         }
     }
@@ -1053,7 +1058,8 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     }
 
     tcp_relay.shutdown();
-    while (!tcp_relay.closed()) {
+    udp_relay.shutdown();
+    while (!tcp_relay.closed() || !udp_relay.closed()) {
         tcp_loop.run_nowait();
     }
 

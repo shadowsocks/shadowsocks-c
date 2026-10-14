@@ -53,6 +53,7 @@ set(SS_RELAY_SOURCE
         relay/codec.cpp
         relay/socket.cpp
         relay/tcp.cpp
+        relay/udp.cpp
         relay/resolver.cpp
         crypto/aead.cpp
         crypto/aead2022.cpp
@@ -74,7 +75,6 @@ endif ()
 
 set(LIBSHADOWSOCKS_LIBEV_SOURCE
         ${SS_SHARED_SOURCES}
-        udprelay.cpp
         cache.cpp
         local.cpp
         resolv.cpp
@@ -92,7 +92,6 @@ set(SS_LOCAL_SOURCE
 
 set(SS_TUNNEL_SOURCE
         ${SS_SHARED_SOURCES}
-        udprelay.cpp
         cache.cpp
         tunnel.cpp
         ${SS_RELAY_SOURCE}
@@ -102,7 +101,6 @@ set(SS_TUNNEL_SOURCE
 
 set(SS_SERVER_SOURCE
         ${SS_SHARED_SOURCES}
-        udprelay.cpp
         cache.cpp
         resolv.cpp
         server.cpp
@@ -119,7 +117,6 @@ set(SS_MANAGER_SOURCE
 
 set(SS_REDIR_SOURCE
         ${SS_SHARED_SOURCES}
-        udprelay.cpp
         cache.cpp
         redir.cpp
         ${SS_RELAY_SOURCE}

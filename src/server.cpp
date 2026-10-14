@@ -74,7 +74,6 @@ enum datatypes {
 #include "crypto.h"
 #include "jconf.h"
 #include "common.h"
-#include "udprelay.h"
 #include "ss_windows.h"
 #include "resolv.h"
 
@@ -84,6 +83,7 @@ enum datatypes {
 #endif
 
 #include "relay/tcp.hpp"
+#include "relay/udp.hpp"
 
 #undef min
 #undef max
@@ -125,7 +125,6 @@ int is_bind_local_addr = 0;
 struct sockaddr_storage local_addr_v4;
 struct sockaddr_storage local_addr_v6;
 
-static crypto_t *crypto;
 
 static int acl       = 0;
 static int mode      = TCP_ONLY;
@@ -1450,9 +1449,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 
     // setup keys
     LOGI("initializing ciphers... %s", method);
-    crypto = crypto_init(password, key, method);
-    if (crypto == NULL)
+    ss::relay::Method relay_method;
+    if (!relay_method.init(method, password, key, ss::crypto::Role::server))
         FATAL("failed to initialize ciphers");
+    if (relay_method.is_2022() && !relay_method.reserve_salt_pool(65536, randombytes_random()))
+        FATAL("failed to set up the AEAD-2022 salt pool");
 
     // initialize ev loop
     struct ss_loop *loop = SS_DEFAULT;
@@ -1522,12 +1523,17 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         }
     }
 
-    // The TCP relay engine runs on the ss_event loop next to the C modules.
+    // The relays run on the ss_event loop next to the C modules, and share
+    // one resolver for targets given by name.
     ss::event::Loop tcp_loop;
-    ss::relay::Method tcp_method;
     ss::relay::Resolver tcp_resolver;
     ss::relay::TcpRelay tcp_relay;
+    ss::relay::UdpRelay udp_relay;
     bool tcp_running = false;
+    if (!tcp_loop.adopt(ss_native_loop(loop))
+        || !tcp_resolver.init(tcp_loop, nameservers, ipv6first != 0, DEFAULT_MAX_CONNECTIONS + 64)) {
+        FATAL("failed to set up the resolver");
+    }
     if (mode != UDP_ONLY) {
         ss::relay::TcpConfig tcp_config;
         tcp_config.kind            = ss::relay::Kind::server;
@@ -1554,15 +1560,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         tcp_config.downstream = &setTosFromConnmark;
         tcp_config.release    = &releaseTracker;
 #endif
-        if (!tcp_loop.adopt(ss_native_loop(loop))
-            || !tcp_method.init(method, password, key, ss::crypto::Role::server)) {
-            FATAL("failed to initialize ciphers");
-        }
-        if (tcp_method.is_2022() && !tcp_method.reserve_salt_pool(65536, randombytes_random())) {
-            FATAL("failed to set up the AEAD-2022 salt pool");
-        }
-        if (!tcp_resolver.init(tcp_loop, nameservers, ipv6first != 0, tcp_config.max_connections)
-            || !tcp_relay.init(tcp_loop, tcp_method, tcp_config, &tcp_resolver)) {
+        if (!tcp_relay.init(tcp_loop, relay_method, tcp_config, &tcp_resolver)) {
             FATAL("failed to set up the TCP relay");
         }
         tcp_running = true;
@@ -1612,6 +1610,22 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     }
 
     if (mode != TCP_ONLY) {
+        ss::relay::UdpConfig udp_config;
+        udp_config.kind         = ss::relay::Kind::server;
+        udp_config.timeout_secs = timeout_secs;
+        udp_config.max_sessions = 512;
+        udp_config.mtu          = mtu;
+        udp_config.iface        = iface;
+        udp_config.label        = remote_port != NULL ? remote_port : "";
+        udp_config.tx           = &tx;
+        udp_config.rx           = &rx;
+        if (is_bind_local_addr) {
+            udp_config.bind_v4 = &local_addr_v4;
+            udp_config.bind_v6 = &local_addr_v6;
+        }
+        if (!udp_relay.init(tcp_loop, relay_method, udp_config, &tcp_resolver)) {
+            FATAL("failed to initialize UDP relay");
+        }
         int num_listen_ctx = 0;
         for (int i = 0; i < server_num; i++) {
             const char *host = server_addr[i].host;
@@ -1624,9 +1638,13 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             else
                 LOGI("udp server listening at %s:%s", host ? host : "0.0.0.0", port);
             // Setup UDP
-            int err = init_udprelay(host, port, mtu, crypto, timeout_secs, iface);
-            if (err == -1)
+            auto udp_fd = ss::relay::open_udp_listener(host, port, false, reuse_port != 0);
+            if (!udp_fd)
                 continue;
+            if (!udp_relay.listen(*udp_fd)) {
+                ss_socket_close(*udp_fd);
+                continue;
+            }
             num_listen_ctx++;
         }
 
@@ -1680,19 +1698,17 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 
     resolv_shutdown(loop);
 
-    if (tcp_running) {
+    {
         static bool resolver_closed;
         resolver_closed = false;
         tcp_relay.shutdown();
+        udp_relay.shutdown();
         tcp_resolver.shutdown(ss::CloseCompletion([](void *, uint32_t) { resolver_closed = true; }, NULL, 0));
-        while (!tcp_relay.closed() || !resolver_closed) {
+        while (!tcp_relay.closed() || !udp_relay.closed() || !resolver_closed) {
             tcp_loop.run_nowait();
         }
     }
-
-    if (mode != TCP_ONLY) {
-        free_udprelay();
-    }
+    (void)tcp_running;
     ss_loop_destroy(loop);
 
 #ifdef __MINGW32__

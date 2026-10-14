@@ -30,11 +30,18 @@ using crypto::Role;
 class Method {
 public:
     // The same inputs as crypto_init(): a method name and either a password
-    // or a base64 key (AEAD-2022 needs the key). Replay protection uses the
-    // process-wide ppbloom filter, which crypto_init() sets up.
+    // or a base64 key (AEAD-2022 needs the key). Also initialises libsodium
+    // and the process-wide ppbloom replay filter, sized for the role.
     Status init(const char *method, const char *password, const char *key, Role role) noexcept;
+    ~Method();
 
     Role role() const noexcept { return role_; }
+    // The key, by family (exactly one is set).
+    const crypto::MasterKey *aead() const noexcept { return std::get_if<crypto::MasterKey>(&key_); }
+    const crypto::Psk *psk() const noexcept { return std::get_if<crypto::Psk>(&key_); }
+#if SS_ENABLE_LEGACY
+    const crypto::StreamKey *stream() const noexcept { return std::get_if<crypto::StreamKey>(&key_); }
+#endif
     bool is_2022() const noexcept { return std::holds_alternative<crypto::Psk>(key_); }
     // Room a first seal() needs on top of the plaintext.
     static constexpr std::size_t kMaxOverhead = 2048;
@@ -55,7 +62,8 @@ private:
     using Key = std::variant<crypto::MasterKey, crypto::Psk>;
 #endif
     Key key_{};
-    Role role_ = Role::client;
+    Role role_        = Role::client;
+    bool bloom_ready_ = false;
     crypto::SaltPool salt_pool_;
 };
 
