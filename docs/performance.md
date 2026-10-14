@@ -1,5 +1,97 @@
 # Modernization measurements
 
+## C++20 rewrite (2026-10-14)
+
+Local macOS arm64 (Apple clang), Release, bundled dependencies. Baseline:
+`master` at `553cdc7` (C). Comparison: the C++20 engine branch stack. Raw
+JSON is in [measurements](measurements/) (`cpp20-*`). These are short
+loopback runs on one machine, not capacity guarantees.
+
+### Heap allocations per relayed connection
+
+`tests/alloc_audit/measure_alloc.py --target 127.0.0.1`: 200 TCP connections
+with a small payload each, after warm-up. Each value is allocations per
+connection as ss-server / ss-local.
+
+| Method | C | C++ |
+|---|---:|---:|
+| aes-256-gcm | 39.0 / 39.0 | 0 / 0 |
+| chacha20-ietf-poly1305 | 33.1 / 33.0 | 0 / 0 |
+| 2022-blake3-aes-256-gcm | 34.0 / 32.9 | 0 / 0 |
+| aes-256-cfb | 27.1 / 26.4 | 0 / 0 |
+
+With a host-name target (`localhost`, resolved by ss-server) the C++ programs
+are still at 0, because c-ares allocates from its fixed heap. The C ss-server
+rises to 89.1 per connection. UDP relaying is also 0 per datagram, where the C relay allocated a
+64 KiB buffer for every one. ctest enforces all of this (`alloc_steady_*`, including
+`alloc_steady_programs_*`).
+
+### Size
+
+Unstripped Release executables, in bytes:
+
+| Program | C | C++ |
+|---|---:|---:|
+| ss-local | 1,086,888 | 1,129,960 |
+| ss-server | 1,086,952 | 1,130,408 |
+| ss-tunnel | 542,200 | 789,144 |
+
+ss-tunnel grows because it now shares the full relay engine with the other
+programs, including the resolver, the UDP relay and every codec.
+
+### TCP throughput and memory
+
+`tests/stress_test.py --size 100 --repeat 3`: median of three runs, server RSS
+after the transfer.
+
+| Cipher | C Mbps | C++ Mbps | C server RSS, KiB | C++ server RSS, KiB |
+|---|---:|---:|---:|---:|
+| aes-128-gcm | 6,353 | 6,285 | 3,472 | 3,648 |
+| aes-256-gcm | 6,829 | 6,637 | 3,440 | 3,616 |
+| chacha20-ietf-poly1305 | 3,037 | 2,891 | 3,456 | 3,664 |
+
+The throughput differences are within the run-to-run spread, which is about
+±20% for these 0.1–0.3 s transfers.
+
+RSS with 1,000 established, idle connections through ss-local and ss-server
+(aes-256-gcm):
+
+| | C server | C++ server | C local | C++ local |
+|---|---:|---:|---:|---:|
+| idle | 2,624 KiB | 2,992 KiB | 2,272 KiB | 2,576 KiB |
+| 1,000 connections | 60,256 KiB | 80,912 KiB | 54,416 KiB | 74,752 KiB |
+
+Each connection slot carries about 104 KiB of inline buffers, against roughly
+58 KiB that the C relay allocated on demand. The pool is reserved virtually at
+startup and only touched slots become resident. A shared buffer pool with read
+backpressure would cut this; it is the main open trade-off of the rewrite.
+
+### UDP
+
+`tests/measure_udp.py`: median payload Mbps over three runs of 2,000 echoed
+1,200-byte packets.
+
+| Cipher | C | C++ |
+|---|---:|---:|
+| aes-128-gcm | 80.9 | 81.4 |
+| aes-256-gcm | 81.1 | 55.1 |
+| chacha20-ietf-poly1305 | 56.2 | 65.6 |
+
+This benchmark is dominated by Python and SOCKS round trips. Single runs vary
+by more than 30% in both builds (for example, C aes-256-gcm ranged from 64 to
+81), so no UDP throughput change is claimed either way.
+
+### Reproduce
+
+```sh
+python3 tests/alloc_audit/measure_alloc.py --bin build/bin --shim build/lib/libss_alloc_audit.dylib \
+    --method aes-256-gcm --target 127.0.0.1
+python3 tests/stress_test.py --bin build/bin --size 100 --repeat 3 --json tcp.json
+python3 tests/measure_udp.py --bin build/bin --output udp.json
+```
+
+## Bundled dependencies (2026-09-10)
+
 Local macOS arm64 results, 2026-09-10. Base commit: `8fe386b`; comparison:
 `feature/self-contained-portable-c`. Raw JSON lives in [measurements](measurements/).
 These are short loopback measurements on one machine, not capacity guarantees.

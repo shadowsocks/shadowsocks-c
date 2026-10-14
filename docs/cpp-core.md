@@ -1,11 +1,12 @@
 # C++20 core and allocation policy
 
-Status: phases 1-3 done, 4-5 in progress. Every module of `src/` is
-compiled as C++20 (most of it is still the C design, converted
-mechanically). The ownership and allocation primitives (`src/core/`), the
-event layer (`src/event/`), allocation-free AEAD and stream codecs
-(`src/crypto/`) and the slab-based cache exist and are tested; the relay
-engines that will use them are the next phases.
+Status: all ten phases are done. Every module of `src/` is C++20. The four
+relaying programs run on one TCP engine and one UDP engine (`src/relay/`)
+built from the ownership and allocation primitives in `src/core/`, the libuv
+wrappers in `src/event/` and value-type codecs in `src/crypto/`. On the data
+path they make no heap allocations (see [performance](performance.md)).
+The original C codecs and cache are kept only as test oracles in
+`tests/reference/`.
 
 ## Goals
 
@@ -49,6 +50,7 @@ engines that will use them are the next phases.
 | `fixed_map.hpp` | `FixedHashMap` (open addressing, backward-shift deletion) and `FixedLru`; replace uthash and `cache.cpp`. |
 | `intrusive_list.hpp` | `IntrusiveList`/`ListNode`; replaces `ss_list`. Nodes unlink themselves when destroyed. |
 | `fixed_heap.hpp` | Bounded size-class allocator to hand to libuv, c-ares and Mbed TLS through their allocator hooks. |
+| `heap_guard.hpp` | `install_library_heaps()` routes libuv, c-ares and Mbed TLS into their own `FixedHeap`s (executables only, never the library); `heap_seal()` marks the end of startup; `log_heap_report()` prints heap use with `-v`. |
 
 ## Event layer (`src/event/loop.hpp`)
 
@@ -60,57 +62,83 @@ handle; a handle closed from another callback gets no further events.
 Handles close into a `CloseGroup`, which signals completion after the last
 asynchronous close, so pooled owners implement `AsyncClosable::begin_close`
 by closing their handles into one. `DeadlineList` drives the idle timeouts
-of many owners from one timer. The `ss_event` C API remains for the code
-that still uses it and is removed with its last caller.
+of many owners from one timer. `program.hpp` holds what every `main()`
+shares: the loop, SIGINT/SIGTERM (and SIGCHLD when a plugin runs), periodic
+callbacks, a cross-thread `request_stop()`, and `after_fork()` for
+`daemonize()`.
+
+## Relay engines (`src/relay/`)
+
+| File | Purpose |
+|---|---|
+| `tcp.hpp` | `TcpRelay`: listeners, a pool of `max_connections` connections, one idle-deadline timer. `Kind` selects the handshake (tunnel, SOCKS5 local, redir, server). A full pool pauses accepting until a slot frees. |
+| `udp.hpp` | `UdpRelay`: sessions in a `FixedLru` over a pool of `max_udp_sessions`, one 64 KiB scratch buffer per relay. AEAD-2022 server sessions are `RefPtr`-shared between the session table and their client sockets. |
+| `codec.hpp` | `Method` (immutable, from the configuration) and per-connection `Encoder`/`Decoder` variants: plain, stream, AEAD, AEAD-2022. |
+| `resolver.hpp` | c-ares with a pool of `max_dns_queries` queries; answers reach their connection through a generation-checked handle, so a closed connection is never called back. |
+| `socket.hpp` | Upstream socket setup, TCP Fast Open, SOCKS address encoding. |
+
+Per-binary behaviour (TOS per redir port, connmark-to-TOS, nftables, manager
+statistics, Android protect) plugs in through hooks on the configs, so the
+engines do not link it.
 
 ## Crypto (`src/crypto/`)
 
-`aead.hpp` (SIP004/SIP007 AEAD) and `stream.hpp` (legacy stream ciphers)
-provide value-type codecs: the cipher state is held inside the codec, TCP
-decoders reassemble into a fixed buffer sized for one chunk, and HKDF-SHA1
-runs on stack SHA-1 state. They are tested differentially against the C
-implementation, which the programs still use until the relay engines move
-over. The bundled Mbed TLS enables `MBEDTLS_BLOCK_CIPHER_C` so GCM key setup
-does not allocate; with a system Mbed TLS lacking it, `mbedtls_gcm_setkey`
-may still allocate. AEAD-2022 (SIP022) codecs follow once the pending
-UDP-session rework on `fix/aead2022-udp-session-eviction` has landed.
+`aead.hpp` (SIP004/SIP007 AEAD), `aead2022.hpp` (SIP022) and `stream.hpp`
+(legacy stream ciphers) provide value-type codecs: the cipher state is held
+inside the codec, TCP decoders reassemble into a fixed buffer sized for one
+chunk and can hand plaintext out in windows of any size, and HKDF-SHA1 runs
+on stack SHA-1 state. `keys.hpp` derives keys and lists the supported
+methods. All codecs are tested byte for byte against the C reference
+implementation in `tests/reference/`. The bundled Mbed TLS enables
+`MBEDTLS_BLOCK_CIPHER_C` so GCM key setup does not allocate; with a system
+Mbed TLS lacking it, `mbedtls_gcm_setkey` may still allocate.
+
+## Capacities
+
+| Setting | Default | Pool |
+|---|---|---|
+| `--max-connections` / `max_connections` | 1024 | TCP connections, about 104 KiB each |
+| `--max-udp-sessions` / `max_udp_sessions` | 256 (ss-server 512) | UDP associations; the least recently used is dropped when full |
+| `--max-dns-queries` / `max_dns_queries` | the connection limit (ss-server +64) | DNS lookups in flight |
+
+Pools are reserved at startup and only touched slots become resident.
 
 ## Phases
 
-1. Build and core (done): C++ enabled in CMake, `src/core/`, unit tests
-   (`test_core_*`), the no-heap lint, the C++ runtime check and the
-   allocation audit.
-2. Mechanical C-to-C++ conversion, leaf modules first (done). Converted
-   modules still allocate like the C code; `scripts/no_heap_baseline.txt`
-   ratchets that down as they are rewritten.
-3. Event loop wrapper over libuv (done: `src/event/`, `test_event_cpp`).
-4. Crypto: cipher contexts held by value, dispatched with `std::variant`
-   (AEAD and stream codecs done; AEAD-2022 pending).
-5. Services: cache (done: fixed slab, no per-entry allocation), lists,
-   resolver, ACL and configuration on the new primitives.
-6. One TCP relay engine shared by ss-tunnel, ss-local, ss-redir and ss-server.
-7. UDP relay engine.
-8. Seal the heap after startup; new `max_connections`, `max_udp_sessions`
-   and `max_dns_queries` settings size the pools.
-9. Public API: `shadowsocks.h` kept byte-for-byte, plus a new installed C++
-   header with an RAII handle.
-10. Remove the C shims.
+1. Build and core: C++ in CMake, `src/core/`, the no-heap lint, the C++
+   runtime check and the allocation audit.
+2. Mechanical C-to-C++ conversion, leaf modules first.
+   `scripts/no_heap_baseline.txt` ratchets down the remaining startup
+   allocations in converted modules.
+3. Event layer over libuv (`src/event/`).
+4. Crypto codecs held by value: AEAD, stream and AEAD-2022.
+5. Services: the cache on a fixed slab, `IntrusiveList` for ACL rules and
+   the manager, the pooled resolver.
+6. One TCP engine for ss-tunnel, ss-local, ss-redir and ss-server.
+7. One UDP engine.
+8. Library heaps for libuv, c-ares and Mbed TLS, `heap_seal()`, and the
+   capacity settings above.
+9. Public API: `shadowsocks.h` unchanged, plus `shadowsocks/control.h`
+   (`ss_local_start`/`stop`/`wait`/`destroy`) and the RAII
+   `shadowsocks/shadowsocks.hpp`.
+10. Removal of `ss_event`, the C resolver, the C codecs (now test oracles),
+    uthash and `ss_list`.
 
 ## Allocation audit
 
 `tests/alloc_audit/alloc_counter.c` is a preloadable `malloc` counter
 (glibc and macOS). `tests/alloc_audit/measure_alloc.py` warms ss-local and
 ss-server up, snapshots their counters, relays more connections and reports
-heap allocations per connection. It runs as the `alloc_audit_report` ctest
-(report-only for now). It becomes a hard check, with a budget of zero, once
-the relay is ported.
+heap allocations per connection; `--udp` measures datagrams instead and
+`--target` picks the destination. The `alloc_steady_programs_*` ctests
+require zero for each method family over TCP and UDP.
 
 ```sh
 python3 tests/alloc_audit/measure_alloc.py --bin build/bin \
     --shim build/lib/libss_alloc_audit.dylib --method aes-256-gcm
 ```
 
-### C baseline
+### C baseline (before the rewrite)
 
 Commit `553cdc7`, macOS arm64, bundled Release build, 200 connections, each
 echoing 16 KiB through ss-local and ss-server on loopback. The figures
@@ -126,11 +154,8 @@ includes a DNS lookup.
 | aes-256-cfb (stream) | 77.1 | 26.5 |
 | aes-256-gcm, 1-byte payload | 85.0 | 36.0 |
 
-After the cache rewrite and `MBEDTLS_BLOCK_CIPHER_C` (programs otherwise
-unchanged): aes-256-gcm 87.1 / 36.9, 2022-blake3-aes-256-gcm 80.1 / 31.0.
-The new codecs and the cache are checked separately for zero allocations
-by `alloc_steady_crypto_aead`, `alloc_steady_crypto_stream` and
-`alloc_steady_cache` (`tests/alloc_audit/check_steady.py`).
+The C++ programs are at 0 for every row, including the name-resolving
+ss-server case; see [performance](performance.md) for the full comparison.
 
 Unstripped Release sizes at the same commit: ss-local 1,086,888 bytes,
 ss-server 1,086,952 bytes, ss-tunnel 542,200 bytes.

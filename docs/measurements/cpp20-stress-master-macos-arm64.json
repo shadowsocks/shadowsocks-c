@@ -1,0 +1,101 @@
+[
+  {
+    "cipher": "aes-128-gcm",
+    "bandwidth_mbps": 7026.096385910413,
+    "duration_sec": 0.11939215660095215,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2672,
+    "server_rss_after_kb": 3472,
+    "tunnel_rss_before_kb": 2240,
+    "tunnel_rss_after_kb": 2432,
+    "error": null
+  },
+  {
+    "cipher": "aes-128-gcm",
+    "bandwidth_mbps": 5562.843320410631,
+    "duration_sec": 0.15079712867736816,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2688,
+    "server_rss_after_kb": 3376,
+    "tunnel_rss_before_kb": 2240,
+    "tunnel_rss_after_kb": 2448,
+    "error": null
+  },
+  {
+    "cipher": "aes-128-gcm",
+    "bandwidth_mbps": 6352.506217899637,
+    "duration_sec": 0.13205194473266602,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2688,
+    "server_rss_after_kb": 3472,
+    "tunnel_rss_before_kb": 2256,
+    "tunnel_rss_after_kb": 2448,
+    "error": null
+  },
+  {
+    "cipher": "aes-256-gcm",
+    "bandwidth_mbps": 5698.907670513842,
+    "duration_sec": 0.14719676971435547,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2720,
+    "server_rss_after_kb": 3504,
+    "tunnel_rss_before_kb": 2240,
+    "tunnel_rss_after_kb": 2432,
+    "error": null
+  },
+  {
+    "cipher": "aes-256-gcm",
+    "bandwidth_mbps": 7647.779004658522,
+    "duration_sec": 0.10968685150146484,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2640,
+    "server_rss_after_kb": 3344,
+    "tunnel_rss_before_kb": 2240,
+    "tunnel_rss_after_kb": 2400,
+    "error": null
+  },
+  {
+    "cipher": "aes-256-gcm",
+    "bandwidth_mbps": 6828.721334061536,
+    "duration_sec": 0.12284302711486816,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2656,
+    "server_rss_after_kb": 3440,
+    "tunnel_rss_before_kb": 2240,
+    "tunnel_rss_after_kb": 2432,
+    "error": null
+  },
+  {
+    "cipher": "chacha20-ietf-poly1305",
+    "bandwidth_mbps": 2650.4055406654115,
+    "duration_sec": 0.31650280952453613,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2640,
+    "server_rss_after_kb": 3456,
+    "tunnel_rss_before_kb": 2240,
+    "tunnel_rss_after_kb": 2416,
+    "error": null
+  },
+  {
+    "cipher": "chacha20-ietf-poly1305",
+    "bandwidth_mbps": 3232.244577277333,
+    "duration_sec": 0.25952887535095215,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2704,
+    "server_rss_after_kb": 3424,
+    "tunnel_rss_before_kb": 2240,
+    "tunnel_rss_after_kb": 2432,
+    "error": null
+  },
+  {
+    "cipher": "chacha20-ietf-poly1305",
+    "bandwidth_mbps": 3036.6328882947946,
+    "duration_sec": 0.2762470245361328,
+    "bytes_transferred": 104857600,
+    "server_rss_before_kb": 2640,
+    "server_rss_after_kb": 3504,
+    "tunnel_rss_before_kb": 2240,
+    "tunnel_rss_after_kb": 2432,
+    "error": null
+  }
+]
