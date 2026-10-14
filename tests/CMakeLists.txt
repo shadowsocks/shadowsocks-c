@@ -210,9 +210,6 @@ set(SS_CRYPTO_TEST_SOURCES
     ${PROJECT_SOURCE_DIR}/src/utils.cpp
 )
 
-if(SS_ENABLE_LEGACY)
-    list(APPEND SS_CRYPTO_TEST_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/reference/stream.cpp)
-endif()
 
 # test_buffer - needs sodium and mbedtls for crypto.cpp buffer functions
 ss_add_test(test_buffer
@@ -250,13 +247,6 @@ ss_add_test(test_crypto_aead2022_cpp
     "${TEST_CRYPTO_LIBS};${SS_MATH_LIBRARY}")
 ss_strict_warnings(test_crypto_aead2022_cpp.cpp ${PROJECT_SOURCE_DIR}/src/crypto/aead2022.cpp)
 
-if(SS_ENABLE_LEGACY)
-# test_crypto_stream_cpp - C++ stream codecs, differentially against stream.cpp
-ss_add_test(test_crypto_stream_cpp
-    "test_crypto_stream_cpp.cpp;${PROJECT_SOURCE_DIR}/src/crypto/stream.cpp;${PROJECT_SOURCE_DIR}/src/crypto/aead.cpp;${PROJECT_SOURCE_DIR}/src/crypto/keys.cpp;${SS_CRYPTO_TEST_SOURCES}"
-    "${TEST_CRYPTO_LIBS};${SS_MATH_LIBRARY}")
-ss_strict_warnings(test_crypto_stream_cpp.cpp ${PROJECT_SOURCE_DIR}/src/crypto/stream.cpp)
-endif()
 
 # test_interop_rust - interoperability against shadowsocks-rust.
 # Skips itself when shadowsocks-rust or the built binaries are absent.
@@ -359,12 +349,6 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
                         --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_crypto_aead2022_cpp>)
             set_tests_properties(alloc_steady_crypto_aead2022 PROPERTIES LABELS "unit" TIMEOUT 60)
-            if(TARGET test_crypto_stream_cpp)
-                add_test(NAME alloc_steady_crypto_stream
-                    COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
-                            --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_crypto_stream_cpp>)
-                set_tests_properties(alloc_steady_crypto_stream PROPERTIES LABELS "unit" TIMEOUT 60)
-            endif()
             add_test(NAME alloc_steady_cache
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
                         --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_cache_cpp>)
@@ -374,9 +358,6 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
             # address, for each cipher family.
             set(SS_ALLOC_CASES "aes-256-gcm@localhost" "2022-blake3-aes-256-gcm@127.0.0.1"
                                "chacha20-ietf-poly1305@127.0.0.1")
-            if(SS_ENABLE_LEGACY)
-                list(APPEND SS_ALLOC_CASES "aes-256-cfb@127.0.0.1")
-            endif()
             foreach(case ${SS_ALLOC_CASES})
                 string(REPLACE "@" ";" parts "${case}")
                 list(GET parts 0 method)
@@ -405,9 +386,6 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
         # ss-tunnel through the C relay engine against ss-server (and
         # shadowsocks-rust when installed), every method.
         set(SS_TUNNEL_INTEROP_ARGS --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
-        if(SS_ENABLE_LEGACY)
-            list(APPEND SS_TUNNEL_INTEROP_ARGS --legacy)
-        endif()
         add_test(NAME test_limits
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_limits.py
                     --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})

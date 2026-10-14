@@ -58,7 +58,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual('--printable-salt' in help_result.stdout, name == 'local')
             if name != 'local':
                 self.assertEqual(self.run_cli(name, '--printable-salt').returncode, 2)
-        for method in ('aes-128-gcm', 'aes-256-cfb', '2022-blake3-aes-256-gcm',
+        for method in ('aes-128-gcm', 'aes-192-gcm', '2022-blake3-aes-256-gcm',
                        '2022-blake3-chacha20-poly1305'):
             with self.subTest(method=method):
                 result = self.run_cli('local', '-s', '127.0.0.1', '-p', '8388',
@@ -87,6 +87,14 @@ class CliTests(unittest.TestCase):
             result = self.run_cli('local', '-c', str(config))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("option 'printable_salt' must be a boolean", result.stderr)
+
+    def test_removed_stream_ciphers_are_rejected(self):
+        for method in ('aes-256-cfb', 'chacha20-ietf', 'rc4-md5'):
+            with self.subTest(method=method):
+                result = self.run_cli('server', '-s', '127.0.0.1', '-p', '1', '-k', 'test-password',
+                                      '-m', method)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('no longer supported', result.stderr)
 
     def test_long_aliases_accept_their_arguments(self):
         for name in self.binaries:

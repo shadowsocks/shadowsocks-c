@@ -32,13 +32,7 @@ if [ "$http_proxy" ]; then
     exit 0
 fi
 
-run_test python tests/test.py $BIN -c tests/aes.json
 run_test python tests/test.py $BIN -c tests/aes-gcm.json
-run_test python tests/test.py $BIN -c tests/aes-ctr.json
-run_test python tests/test.py $BIN -c tests/rc4-md5.json
-run_test python tests/test.py $BIN -c tests/salsa20.json
-run_test python tests/test.py $BIN -c tests/chacha20.json
-run_test python tests/test.py $BIN -c tests/chacha20-ietf.json
 run_test python tests/test.py $BIN -c tests/chacha20-ietf-poly1305.json
 run_test python tests/test.py $BIN -c tests/2022-blake3-aes-128-gcm.json
 run_test python tests/test.py $BIN -c tests/2022-blake3-aes-256-gcm.json

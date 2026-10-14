@@ -15,7 +15,6 @@ from interop import TCPHandler, TCPOrigin, UDPHandler, UDPOrigin, free_port, pee
 
 METHODS = ["2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305",
            "aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305"]
-LEGACY = ["aes-256-cfb", "aes-128-ctr", "camellia-256-cfb", "chacha20-ietf", "salsa20"]
 
 
 def tcp_case(port, size):
@@ -47,23 +46,20 @@ def udp_case(port):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bin", required=True, type=Path)
-    parser.add_argument("--legacy", action="store_true", help="also run the stream ciphers")
     parser.add_argument("--fast-open", action="store_true")
     args = parser.parse_args()
     bins = args.bin.resolve()
     server, tunnel = str(bins / "ss-server"), str(bins / "ss-tunnel")
     rust_server = shutil.which("ssserver")
-    methods = METHODS + (LEGACY if args.legacy else [])
     failures = 0
     with TCPOrigin(("127.0.0.1", 0), TCPHandler) as tcp, UDPOrigin(("127.0.0.1", 0), UDPHandler) as udp:
         for origin in (tcp, udp):
             threading.Thread(target=origin.serve_forever, daemon=True).start()
         try:
-            for method in methods:
-                stream = method in LEGACY
-                for peer in ("C server",) + (("Rust server",) if rust_server and not stream else ()):
+            for method in METHODS:
+                for peer in ("C server",) + (("Rust server",) if rust_server else ()):
                     key = base64.b64encode(os.urandom(16 if "aes-128" in method else 32)).decode()
-                    secret = ["-k", "password"] if stream else ["-k", key]
+                    secret = ["-k", key]
                     sport, tport, uport = free_port(), free_port(), free_port()
                     if peer == "C server":
                         srv = [server, "-s", "127.0.0.1", "-p", str(sport), "-m", method, "-u"] + secret

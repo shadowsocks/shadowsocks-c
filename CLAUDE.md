@@ -32,7 +32,7 @@ Binaries land in `<build>/bin/`, libraries in `<build>/lib/`.
 
 ### CMake Options
 
-- `-DSS_MINIMAL=ON`: no regex, plugins, manager or legacy stream ciphers
+- `-DSS_MINIMAL=ON`: no regex, plugins or manager
 - `-DWITH_STATIC=OFF`: link third-party dependencies dynamically
 - `-DSS_BUILD_EXECUTABLES / SS_BUILD_STATIC_LIBRARY / SS_BUILD_SHARED_LIBRARY`: choose outputs
 - `-DWITH_DOC_MAN=ON` / `-DWITH_DOC_HTML=ON`: build documentation
@@ -117,7 +117,7 @@ handshake), `udp.cpp` (UDP relay), `codec.cpp` (per-connection encoder/decoder v
 runs them.
 
 **Crypto** (`src/crypto/`): value-type codecs `aead.cpp` (AES-GCM, ChaCha20-Poly1305), `aead2022.cpp`
-(Shadowsocks 2022, BLAKE3 from `src/blake3`), `stream.cpp` (legacy, `SS_ENABLE_LEGACY`), `keys.cpp`
+(Shadowsocks 2022, BLAKE3 from `src/blake3`), `keys.cpp`
 (key derivation, method tables). The old C implementation lives in `tests/reference/` as a test oracle.
 
 **ACL:** `acl.cpp` / `rule.cpp` / `ipset.cpp` - IP prefix sets and PCRE2/literal domain rules.

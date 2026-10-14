@@ -62,23 +62,22 @@ Status Method::init(const char *method, const char *password, const char *key, R
         }
         return {};
     }
-#if SS_ENABLE_LEGACY
-    if (auto spec = crypto::find_stream(method)) {
-        LOGI("Stream ciphers are insecure, therefore deprecated, and should be almost always avoided.");
-        if (key != nullptr) {
-            crypto::StreamKey stream{ *spec, {} };
-            if (!crypto::parse_key(key, { stream.bytes.data(), spec->key_len }, false)) {
-                crypto::report_bad_key("key", spec->key_len);
-                return fail(Errc::config);
-            }
-            key_ = stream;
-        } else {
-            SS_TRY_ASSIGN(stream, crypto::StreamKey::from_password(*spec, password));
-            key_ = stream;
+    // The unauthenticated stream ciphers (and RC4/table before them) were
+    // removed; say so instead of calling the name unknown.
+    static constexpr const char *kRemoved[] = {
+        "table", "rc4", "rc4-md5", "aes-128-cfb", "aes-192-cfb", "aes-256-cfb", "aes-128-ctr", "aes-192-ctr",
+        "aes-256-ctr", "bf-cfb", "camellia-128-cfb", "camellia-192-cfb", "camellia-256-cfb", "cast5-cfb",
+        "des-cfb", "idea-cfb", "rc2-cfb", "seed-cfb", "salsa20", "chacha20", "chacha20-ietf",
+    };
+    for (const char *name : kRemoved) {
+        if (std::strcmp(name, method) == 0) {
+            LOGE("stream cipher %s is no longer supported; use an AEAD method such as chacha20-ietf-poly1305 "
+                 "or 2022-blake3-aes-256-gcm",
+                 method);
+            return fail(Errc::config);
         }
-        return {};
     }
-#endif
+    LOGE("unsupported method: %s", method);
     return fail(Errc::config);
 }
 
@@ -103,25 +102,11 @@ Status Encoder::init(Method &method, bool plain, const Decoder *peer, bool print
         const crypto::Aead2022TcpDecryptor *request = peer != nullptr ? peer->as_2022() : nullptr;
         return impl_.emplace<crypto::Aead2022TcpEncryptor>().init(*psk, method.role_, request);
     }
-#if SS_ENABLE_LEGACY
-    if (auto *stream = std::get_if<crypto::StreamKey>(&method.key_)) {
-        return impl_.emplace<crypto::StreamTcpEncryptor>().init(*stream, filter);
-    }
-#endif
     return fail(Errc::config);
 }
 
 // Explicit dispatch: std::visit can report bad_variant_access through the
 // C++ runtime, which the programs do not link.
-#if SS_ENABLE_LEGACY
-#define SS_STREAM_CASE(E, expr)                                     \
-    if (auto *e = std::get_if<crypto::Stream##E>(&impl_)) {         \
-        return expr;                                                \
-    }
-#else
-#define SS_STREAM_CASE(E, expr)
-#endif
-
 std::size_t Encoder::sealed_size(std::size_t plaintext_len) const noexcept
 {
     if (auto *e = std::get_if<crypto::AeadTcpEncryptor>(&impl_)) {
@@ -130,7 +115,6 @@ std::size_t Encoder::sealed_size(std::size_t plaintext_len) const noexcept
     if (auto *e = std::get_if<crypto::Aead2022TcpEncryptor>(&impl_)) {
         return e->sealed_size(plaintext_len);
     }
-    SS_STREAM_CASE(TcpEncryptor, e->sealed_size(plaintext_len))
     return plaintext_len;
 }
 
@@ -142,7 +126,6 @@ Result<std::size_t> Encoder::seal(std::span<const std::uint8_t> plaintext, std::
     if (auto *e = std::get_if<crypto::Aead2022TcpEncryptor>(&impl_)) {
         return e->seal(plaintext, out);
     }
-    SS_STREAM_CASE(TcpEncryptor, e->seal(plaintext, out))
     if (out.size() < plaintext.size()) {
         return fail(Errc::invalid);
     }
@@ -179,11 +162,6 @@ Status Decoder::init(Method &method, bool plain, const Encoder *peer) noexcept
         }
         return impl_.emplace<crypto::Aead2022TcpDecryptor>().init(*psk, Role::server, {}, &method.salt_pool_);
     }
-#if SS_ENABLE_LEGACY
-    if (auto *stream = std::get_if<crypto::StreamKey>(&method.key_)) {
-        return impl_.emplace<crypto::StreamTcpDecryptor>().init(*stream, filter);
-    }
-#endif
     return fail(Errc::config);
 }
 
@@ -195,7 +173,7 @@ std::size_t Decoder::accept_limit() const noexcept
     if (auto *d = std::get_if<crypto::Aead2022TcpDecryptor>(&impl_)) {
         return d->accept_limit();
     }
-    return SIZE_MAX; // plain and stream decode as much as there is room for
+    return SIZE_MAX; // plain decodes as much as there is room for
 }
 
 Result<Decoder::Step> Decoder::decrypt(std::span<const std::uint8_t> in, std::span<std::uint8_t> out) noexcept
@@ -212,7 +190,6 @@ Result<Decoder::Step> Decoder::decrypt(std::span<const std::uint8_t> in, std::sp
     if (auto *d = std::get_if<crypto::Aead2022TcpDecryptor>(&impl_)) {
         return convert(d->decrypt(in, out));
     }
-    SS_STREAM_CASE(TcpDecryptor, convert(e->decrypt(in, out)))
     std::size_t n = std::min(in.size(), out.size());
     if (n != 0) {
         std::memcpy(out.data(), in.data(), n);
@@ -220,6 +197,5 @@ Result<Decoder::Step> Decoder::decrypt(std::span<const std::uint8_t> in, std::sp
     return Step{ n, n };
 }
 
-#undef SS_STREAM_CASE
 
 } // namespace ss::relay

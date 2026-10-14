@@ -83,8 +83,8 @@ engines do not link it.
 
 ## Crypto (`src/crypto/`)
 
-`aead.hpp` (SIP004/SIP007 AEAD), `aead2022.hpp` (SIP022) and `stream.hpp`
-(legacy stream ciphers) provide value-type codecs: the cipher state is held
+`aead.hpp` (SIP004/SIP007 AEAD) and `aead2022.hpp` (SIP022) provide
+value-type codecs (the unauthenticated stream ciphers were removed): the cipher state is held
 inside the codec, TCP decoders reassemble into a fixed buffer sized for one
 chunk and can hand plaintext out in windows of any size, and HKDF-SHA1 runs
 on stack SHA-1 state. `keys.hpp` derives keys and lists the supported
@@ -151,7 +151,7 @@ includes a DNS lookup.
 | aes-256-gcm | 89.1 | 39.2 |
 | chacha20-ietf-poly1305 | 83.1 | 33.0 |
 | 2022-blake3-aes-256-gcm | 84.0 | 33.0 |
-| aes-256-cfb (stream) | 77.1 | 26.5 |
+| aes-256-cfb (stream, since removed) | 77.1 | 26.5 |
 | aes-256-gcm, 1-byte payload | 85.0 | 36.0 |
 
 The C++ programs are at 0 for every row, including the name-resolving

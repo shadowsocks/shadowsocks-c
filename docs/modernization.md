@@ -7,10 +7,15 @@ review: https://github.com/shadowsocks/shadowsocks-libev/pull/3050 (merged).
 ## Compatibility contract
 
 Keep the existing CLI, JSON configuration, ss:// parsing, SIP003 plugins,
-ACL blacklist/whitelist/outbound precedence, public shadowsocks.h API, legacy
-stream ciphers, AEAD and SIP022 TCP/UDP behavior in the compatibility profile.
-Removing regex or legacy ciphers is explicit opt-in, with configuration errors
-for unavailable functionality. Linux redirection/netfilter remains Linux-only.
+ACL blacklist/whitelist/outbound precedence, public shadowsocks.h API, AEAD
+and SIP022 TCP/UDP behavior in the compatibility profile. Removing regex is
+explicit opt-in, with configuration errors for unavailable functionality.
+
+Amended in the C++20 rewrite: the unauthenticated stream ciphers
+(`aes-*-cfb`, `aes-*-ctr`, `camellia-*-cfb`, `chacha20`, `chacha20-ietf`,
+`salsa20`, and before them RC4 and `table`) are removed in every build. A
+configuration naming one fails at startup with a message pointing to an AEAD
+method. Linux redirection/netfilter remains Linux-only.
 
 The sources are moving from C11 to C++20 module by module, with an explicit
 ownership model and no heap allocation after startup. The public
@@ -34,7 +39,8 @@ ownership model and no heap allocation after startup. The public
 - [x] Portability layer for sockets/errors, I/O, clocks, randomness and processes.
 - [x] Runtime CI: Linux glibc/musl, macOS, FreeBSD, Windows MinGW.
 - [x] Document MSVC/event-loop compatibility assessment as a later milestone.
-- [x] Minimal profile: no regex/plugins/manager/legacy stream ciphers.
+- [x] Minimal profile: no regex/plugins/manager.
+- [x] Stream ciphers removed from all builds (C++20 rewrite).
 - [x] Crypto-only Mbed TLS configuration and evidence-backed provider assessment.
 - [x] Complete sanitizers/static analysis, compatibility and stress validation,
       release archive offline build, installed consumer, before/after report.
@@ -162,8 +168,7 @@ or inventing replacement crypto implementations is outside this modernization.
 Retain libsodium plus Mbed TLS crypto primitives. The bundled Mbed TLS config
 omits TLS, X.509, certificate parsing and handshake machinery; it retains only
 cipher/hash primitives needed by protocol compatibility. Libsodium alone cannot
-replace AES-128-GCM, software AES fallback, MD5/SHA1 compatibility derivation and
-legacy stream modes. PCRE2 is absent in the minimal profile. This removes three
+replace AES-128-GCM, software AES fallback and MD5/SHA1 compatibility derivation. PCRE2 is absent in the minimal profile. This removes three
 submodule dependencies and reduces what is built without replacing audited
 cryptographic algorithms with project-specific implementations.
 

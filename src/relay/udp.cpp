@@ -557,11 +557,6 @@ void UdpRelay::client_packet(Listener &listener, const sockaddr_storage &from, s
             sealed = crypto::udp2022_seal(*psk, Role::client, session->client2022_, plain, in_);
         }
     }
-#if SS_ENABLE_LEGACY
-    else if (const crypto::StreamKey *stream = method_->stream()) {
-        sealed = crypto::stream_udp_seal(*stream, plain, in_, crypto::ReplayFilter::ppbloom());
-    }
-#endif
     if (!sealed) {
         return; // drop the packet silently
     }
@@ -626,11 +621,6 @@ void UdpRelay::server_packet(Listener &listener, const sockaddr_storage &from, s
             }
         }
     }
-#if SS_ENABLE_LEGACY
-    else if (const crypto::StreamKey *stream = method_->stream()) {
-        opened = crypto::stream_udp_open(*stream, packet, out_, crypto::ReplayFilter::ppbloom());
-    }
-#endif
     if (!opened) {
         char peer[INET6_ADDRSTRLEN] = {};
         const void *raw = from.ss_family == AF_INET
@@ -766,11 +756,6 @@ void UdpRelay::reply(UdpSession &session) noexcept
                     sealed = crypto::udp2022_seal(*psk, Role::server, session.server2022_->state, plain, in_);
                 }
             }
-#if SS_ENABLE_LEGACY
-            else if (const crypto::StreamKey *stream = method_->stream()) {
-                sealed = crypto::stream_udp_seal(*stream, plain, in_, crypto::ReplayFilter::ppbloom());
-            }
-#endif
             if (!sealed) {
                 continue;
             }
@@ -786,11 +771,6 @@ void UdpRelay::reply(UdpSession &session) noexcept
                                                     static_cast<std::uint64_t>(std::time(nullptr)));
                 }
             }
-#if SS_ENABLE_LEGACY
-            else if (const crypto::StreamKey *stream = method_->stream()) {
-                opened = crypto::stream_udp_open(*stream, packet, out_, crypto::ReplayFilter::ppbloom());
-            }
-#endif
             if (!opened) {
                 LOGE("failed to handshake with the server: %s", "suspicious UDP packet");
                 continue;

@@ -53,9 +53,6 @@ set(SS_RELAY_SOURCE
         crypto/aead2022.cpp
         crypto/keys.cpp
         )
-if(SS_ENABLE_LEGACY)
-    list(APPEND SS_RELAY_SOURCE crypto/stream.cpp)
-endif()
 
 set(SS_SHARED_SOURCES
         ppbloom.cpp

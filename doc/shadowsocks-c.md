@@ -72,7 +72,7 @@ The config file equivalent of command line options is listed as examples below.
 - `-b 2620:129:35::33`: `"local_ipv6_address": "2620:129:35::33"`
 - `-l 4321`: `"local_port": "4321"`
 - `-k "PasSworD"`: `"password": "PasSworD"`
-- `-m "aes-256-cfb"`: `"method": "aes-256-cfb"`
+- `-m "aes-256-gcm"`: `"method": "aes-256-gcm"`
 - `-t 60`: `"timeout": 60`
 - `-a nobody`: `"user": "nobody"`
 - `--acl "/path/to/acl"`: `"acl": "/path/to/acl"`

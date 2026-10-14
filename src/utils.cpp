@@ -379,9 +379,8 @@ Set the cipher. The default is `chacha20-ietf-poly1305`.
 AEAD cipher names from the source (availability depends on the build):
 \snippet aead.cpp cli-aead-ciphers
 
-Legacy stream cipher names recognized by the source (disabled in minimal builds;
-some require backend support):
-\snippet stream.cpp cli-stream-ciphers
+The unauthenticated stream ciphers (`aes-256-cfb`, `chacha20-ietf`, `rc4-md5`
+and the like) are no longer supported.
 
 The `2022-blake3-*` ciphers implement Shadowsocks 2022 (SIP022). They require
 a base64-encoded pre-shared key supplied with `--key` or `--password` (*-k*): 16 bytes for

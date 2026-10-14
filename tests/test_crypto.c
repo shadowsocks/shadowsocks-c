@@ -292,58 +292,6 @@ test_printable_salt(const char *method, int enabled)
     ss_free(crypto);
 }
 
-/*
- * Round-trip a multi-segment stream through a stream cipher.
- *
- * The segments deliberately have lengths that are not a multiple of the
- * cipher block size, and there is deliberately more than one of them: only
- * the first segment carries the nonce, so a codec that mishandles the
- * post-nonce steady state still round-trips a single segment correctly.
- */
-#if SS_ENABLE_LEGACY
-static void
-test_stream_multi_segment_roundtrip(const char *method)
-{
-    static const char *segments[] = {
-        "first-segment",
-        "second",
-        "a third segment that is a good deal longer than one block",
-    };
-
-    crypto_t *crypto = crypto_init("password", NULL, method);
-    assert(crypto != NULL);
-
-    cipher_ctx_t enc_ctx, dec_ctx;
-    crypto->ctx_init(crypto->cipher, &enc_ctx, 1);
-    crypto->ctx_init(crypto->cipher, &dec_ctx, 0);
-
-    for (size_t i = 0; i < sizeof(segments) / sizeof(segments[0]); i++) {
-        size_t len = strlen(segments[i]);
-
-        buffer_t buf;
-        memset(&buf, 0, sizeof(buf));
-        balloc(&buf, 2048);
-        memcpy(buf.data, segments[i], len);
-        buf.len = len;
-
-        assert(crypto->encrypt(&buf, &enc_ctx, 2048) == CRYPTO_OK);
-        assert(crypto->decrypt(&buf, &dec_ctx, 2048) == CRYPTO_OK);
-
-        assert(buf.len == len);
-        assert(memcmp(buf.data, segments[i], len) == 0);
-
-        bfree(&buf);
-    }
-
-    crypto->ctx_release(&enc_ctx);
-    crypto->ctx_release(&dec_ctx);
-    ppbloom_free();
-    ss_free(crypto->cipher);
-    ss_free(crypto);
-}
-
-#endif
-
 int
 main(void)
 {
@@ -364,16 +312,6 @@ main(void)
     test_crypto_parse_key();
     test_aead_repeat_salt_rejection_releases_context();
 
-#if SS_ENABLE_LEGACY
-    /* mbedTLS-backed ciphers and libsodium-backed ciphers use different
-     * code paths in stream.cpp, so cover both. */
-    test_stream_multi_segment_roundtrip("aes-256-cfb");
-    test_stream_multi_segment_roundtrip("aes-256-ctr");
-    test_stream_multi_segment_roundtrip("camellia-128-cfb");
-    test_stream_multi_segment_roundtrip("chacha20-ietf");
-    test_stream_multi_segment_roundtrip("salsa20");
-#else
     assert(crypto_init("password", NULL, "aes-256-cfb") == NULL);
-#endif
     return 0;
 }

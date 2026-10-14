@@ -172,7 +172,7 @@ Doxygen renders man pages and HTML documentation from CLI source comments. See [
 for validation and rendering commands.
 
 For a smaller build, use `-DSS_MINIMAL=ON`. It excludes PCRE2 regex, plugin
-subprocesses, the manager, and legacy stream ciphers. Minimal ACLs support
+subprocesses and the manager. Minimal ACLs support
 IPv4/IPv6 CIDRs, `full:example.com` for exact domains, and
 `suffix:example.com` for the apex and subdomains. Literal matches ignore ASCII
 case and respect label boundaries. Unsupported regex rules are rejected.
@@ -188,8 +188,8 @@ Use `-DCMAKE_PREFIX_PATH=/opt/homebrew/opt/mbedtls@3` when needed on macOS.
 | `SS_BUILD_EXECUTABLES` | `ON` | Command-line tools |
 | `SS_BUILD_STATIC_LIBRARY` | `ON` | Static embedding library with installed dependency archives |
 | `SS_BUILD_SHARED_LIBRARY` | `ON` | Shared embedding library |
-| `SS_MINIMAL` | `OFF` | Disable regex, plugins, manager, and legacy stream ciphers |
-| `SS_ENABLE_REGEX` / `SS_ENABLE_PLUGINS` / `SS_ENABLE_LEGACY` | `ON` | Individual compatibility features |
+| `SS_MINIMAL` | `OFF` | Disable regex, plugins and manager |
+| `SS_ENABLE_REGEX` / `SS_ENABLE_PLUGINS` | `ON` | Individual compatibility features |
 | `WITH_DOC_MAN` / `WITH_DOC_HTML` | `OFF` | Generate documentation (requires Doxygen 1.9.4+) |
 | `SS_INSTALL_TOOLS` | `OFF` | Install platform shell helpers |
 | `ENABLE_SANITIZERS` | `OFF` | AddressSanitizer and UndefinedBehaviorSanitizer |
@@ -395,15 +395,9 @@ you may refer to the man pages of the applications, respectively.
                                   2022-blake3-aes-128-gcm,
                                   2022-blake3-aes-256-gcm,
                                   2022-blake3-chacha20-poly1305,
-                                  rc4-md5,
                                   aes-128-gcm, aes-192-gcm, aes-256-gcm,
-                                  aes-128-cfb, aes-192-cfb, aes-256-cfb,
-                                  aes-128-ctr, aes-192-ctr, aes-256-ctr,
-                                  camellia-128-cfb, camellia-192-cfb,
-                                  camellia-256-cfb, bf-cfb,
-                                  chacha20-ietf-poly1305,
-                                  xchacha20-ietf-poly1305,
-                                  salsa20, chacha20 and chacha20-ietf.
+                                  chacha20-ietf-poly1305 and
+                                  xchacha20-ietf-poly1305.
                                   The default cipher is chacha20-ietf-poly1305.
 
                                   The 2022-blake3-* ciphers implement

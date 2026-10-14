@@ -22,21 +22,13 @@ import threading
 import time
 from subprocess import Popen
 
-# Ciphers to test: AEAD (recommended) + common stream ciphers
+# Ciphers to test (the stream ciphers were removed).
 AEAD_CIPHERS = [
     "aes-128-gcm",
     "aes-256-gcm",
     "chacha20-ietf-poly1305",
 ]
 
-STREAM_CIPHERS = [
-    "aes-128-cfb",
-    "aes-256-cfb",
-    "aes-256-ctr",
-    "chacha20-ietf",
-]
-
-ALL_CIPHERS = AEAD_CIPHERS + STREAM_CIPHERS
 
 # Ports (picked high to avoid conflicts)
 SERVER_PORT = 18388
@@ -313,10 +305,6 @@ def main():
         help="Number of times to repeat each cipher test (default: 1)"
     )
     parser.add_argument(
-        "--stream", action="store_true",
-        help="Include stream ciphers (deprecated, insecure)"
-    )
-    parser.add_argument(
         "--leak-threshold", type=int, default=10240,
         help="RSS growth threshold in KB to flag as potential leak (default: 10240)"
     )
@@ -329,8 +317,6 @@ def main():
     # Determine ciphers to test
     if args.cipher:
         ciphers = [args.cipher]
-    elif args.stream:
-        ciphers = ALL_CIPHERS
     else:
         ciphers = AEAD_CIPHERS
 

@@ -18,7 +18,7 @@ connection as ss-server / ss-local.
 | aes-256-gcm | 39.0 / 39.0 | 0 / 0 |
 | chacha20-ietf-poly1305 | 33.1 / 33.0 | 0 / 0 |
 | 2022-blake3-aes-256-gcm | 34.0 / 32.9 | 0 / 0 |
-| aes-256-cfb | 27.1 / 26.4 | 0 / 0 |
+| aes-256-cfb (stream, since removed) | 27.1 / 26.4 | 0 / 0 |
 
 With a host-name target (`localhost`, resolved by ss-server) the C++ programs
 are still at 0, because c-ares allocates from its fixed heap. The C ss-server

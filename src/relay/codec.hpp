@@ -19,9 +19,6 @@
 #include "core/result.hpp"
 #include "crypto/aead.hpp"
 #include "crypto/aead2022.hpp"
-#if SS_ENABLE_LEGACY
-#include "crypto/stream.hpp"
-#endif
 
 namespace ss::relay {
 
@@ -39,9 +36,6 @@ public:
     // The key, by family (exactly one is set).
     const crypto::MasterKey *aead() const noexcept { return std::get_if<crypto::MasterKey>(&key_); }
     const crypto::Psk *psk() const noexcept { return std::get_if<crypto::Psk>(&key_); }
-#if SS_ENABLE_LEGACY
-    const crypto::StreamKey *stream() const noexcept { return std::get_if<crypto::StreamKey>(&key_); }
-#endif
     bool is_2022() const noexcept { return std::holds_alternative<crypto::Psk>(key_); }
     // Room a first seal() needs on top of the plaintext.
     static constexpr std::size_t kMaxOverhead = 2048;
@@ -56,11 +50,7 @@ private:
     friend class Encoder;
     friend class Decoder;
 
-#if SS_ENABLE_LEGACY
-    using Key = std::variant<crypto::MasterKey, crypto::Psk, crypto::StreamKey>;
-#else
     using Key = std::variant<crypto::MasterKey, crypto::Psk>;
-#endif
     Key key_{};
     Role role_        = Role::client;
     bool bloom_ready_ = false;
@@ -81,11 +71,7 @@ public:
 
 private:
     struct Plain {};
-#if SS_ENABLE_LEGACY
-    std::variant<Plain, crypto::AeadTcpEncryptor, crypto::Aead2022TcpEncryptor, crypto::StreamTcpEncryptor> impl_;
-#else
     std::variant<Plain, crypto::AeadTcpEncryptor, crypto::Aead2022TcpEncryptor> impl_;
-#endif
 };
 
 class Decoder {
@@ -114,11 +100,7 @@ public:
 
 private:
     struct Plain {};
-#if SS_ENABLE_LEGACY
-    std::variant<Plain, crypto::AeadTcpDecryptor, crypto::Aead2022TcpDecryptor, crypto::StreamTcpDecryptor> impl_;
-#else
     std::variant<Plain, crypto::AeadTcpDecryptor, crypto::Aead2022TcpDecryptor> impl_;
-#endif
 };
 
 } // namespace ss::relay

@@ -38,7 +38,6 @@
 
 #include "base64.h"
 #include "crypto.h"
-#include "stream.h"
 #include "aead.h"
 #include "utils.h"
 #include "ppbloom.h"
@@ -150,32 +149,6 @@ crypto_init(const char *password, const char *key, const char *method)
 #endif
 
     if (method != NULL) {
-#if SS_ENABLE_LEGACY
-        for (i = 0; i < STREAM_CIPHER_NUM; i++)
-            if (strcmp(method, supported_stream_ciphers[i]) == 0) {
-                m = i;
-                break;
-            }
-        if (m != -1) {
-            LOGI("Stream ciphers are insecure, therefore deprecated, and should be almost always avoided.");
-            cipher_t *cipher = stream_init(password, key, method);
-            if (cipher == NULL)
-                return NULL;
-            crypto_t *crypto = (crypto_t *)ss_malloc(sizeof(crypto_t));
-            crypto_t tmp     = {
-                .cipher      = cipher,
-                .encrypt_all = &stream_encrypt_all,
-                .decrypt_all = &stream_decrypt_all,
-                .encrypt     = &stream_encrypt,
-                .decrypt     = &stream_decrypt,
-                .ctx_init    = &stream_ctx_init,
-                .ctx_release = &stream_ctx_release,
-            };
-            memcpy((void *)crypto, &tmp, sizeof(crypto_t)); /* const members: copy the bytes */
-            return crypto;
-        }
-
-#endif
         for (i = 0; i < AEAD_CIPHER_NUM; i++)
             if (strcmp(method, supported_aead_ciphers[i]) == 0) {
                 m = i;
