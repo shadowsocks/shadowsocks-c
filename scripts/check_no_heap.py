@@ -14,7 +14,12 @@ A line that must allocate (a startup reservation) carries a justification:
 
     void *base = std::calloc(1, size); // heap-ok: startup reservation
 
-Usage: check_no_heap.py [--root DIR] [--self-test]
+Modules converted mechanically from C still allocate the way the C code did
+until they are rewritten. scripts/no_heap_baseline.txt lists them with their
+current violation counts, and works as a ratchet: a file may not gain
+violations, and when it loses some the baseline must be lowered to match.
+
+Usage: check_no_heap.py [--root DIR] [--baseline FILE] [--self-test]
 """
 
 import argparse
@@ -89,16 +94,42 @@ def check_text(text):
     return problems
 
 
-def check_tree(root):
+def read_baseline(path):
+    baseline = {}
+    if path is None or not path.exists():
+        return baseline
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if line:
+            name, count = line.split()
+            baseline[name] = int(count)
+    return baseline
+
+
+def check_tree(root, baseline):
     src = root / "src"
     files = sorted(p for p in src.rglob("*") if p.suffix in (".cpp", ".hpp") and "blake3" not in p.parts)
-    failures = 0
+    ok = True
+    total = 0
     for path in files:
-        for number, why, line in check_text(path.read_text(encoding="utf-8")):
-            print(f"{path.relative_to(root)}:{number}: {why}: {line}")
-            failures += 1
-    print(f"check_no_heap: {len(files)} C++ files, {failures} violation(s)")
-    return failures == 0
+        name = path.relative_to(root).as_posix()
+        problems = check_text(path.read_text(encoding="utf-8"))
+        allowed = baseline.pop(name, 0)
+        total += len(problems)
+        if len(problems) > allowed:
+            for number, why, line in problems:
+                print(f"{name}:{number}: {why}: {line}")
+            print(f"{name}: {len(problems)} violation(s), baseline allows {allowed}")
+            ok = False
+        elif len(problems) < allowed:
+            print(f"{name}: {len(problems)} violation(s), below the baseline of {allowed}; "
+                  "lower it in scripts/no_heap_baseline.txt")
+            ok = False
+    for name in sorted(baseline):
+        print(f"{name}: listed in the baseline but not a C++ source; remove the entry")
+        ok = False
+    print(f"check_no_heap: {len(files)} C++ files, {total} baselined or new violation(s)")
+    return ok
 
 
 def self_test():
@@ -144,11 +175,15 @@ def self_test():
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parent.parent)
+    parser.add_argument("--baseline", type=pathlib.Path,
+                        help="ratchet file (default: scripts/no_heap_baseline.txt under --root)")
     parser.add_argument("--self-test", action="store_true", help="run the pattern self-test first")
     args = parser.parse_args()
     if args.self_test and not self_test():
         return 1
-    return 0 if check_tree(args.root.resolve()) else 1
+    root = args.root.resolve()
+    baseline = read_baseline(args.baseline or root / "scripts" / "no_heap_baseline.txt")
+    return 0 if check_tree(root, baseline) else 1
 
 
 if __name__ == "__main__":

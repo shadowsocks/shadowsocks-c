@@ -2,7 +2,7 @@
 #ifndef SS_CORE_FIXED_MAP_HPP
 #define SS_CORE_FIXED_MAP_HPP
 
-// Fixed-capacity associative containers. Replace uthash (cache.c,
+// Fixed-capacity associative containers. Replace uthash (cache.cpp,
 // ss_event.c, manager.c) without any per-entry allocation.
 //
 // FixedHashMap<K, V>
@@ -15,7 +15,7 @@
 // FixedLru<K, V>
 //     Map plus recency order. Values live in a slab and never move, so the
 //     pointer returned by insert() or find() stays valid until that entry
-//     is erased or evicted. Replaces the pseudo-LRU in cache.c.
+//     is erased or evicted. Replaces the pseudo-LRU in cache.cpp.
 //
 // Keys from the network (UDP peer addresses, session IDs) are hashed with a
 // per-table seed. Seed it from a CSPRNG in production code so a peer cannot

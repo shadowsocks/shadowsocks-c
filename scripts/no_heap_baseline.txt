@@ -1,0 +1,10 @@
+# Heap-allocation ratchet for C++ sources converted mechanically from C.
+# Format: <path> <violations>. check_no_heap.py fails if a file gains
+# violations, and also when it loses some, so the number here always goes
+# down. Remove a file once it is rewritten on the src/core primitives.
+src/cache.cpp 3
+src/ipset.cpp 3
+src/json.cpp 2
+src/process.cpp 26
+src/rule.cpp 2
+src/ssurl.cpp 3

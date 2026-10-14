@@ -10,8 +10,8 @@ endif ()
 
 set(SS_ACL_SOURCE
         acl.c
-        ipset.c
-        rule.c
+        ipset.cpp
+        rule.cpp
         )
 
 set(SS_CRYPTO_SOURCE
@@ -19,7 +19,7 @@ set(SS_CRYPTO_SOURCE
         aead.c
         aead2022.c
         aead2022_udp.c
-        base64.c
+        base64.cpp
         )
 
 # BLAKE3 (vendored) provides the key derivation for the 2022 ciphers. Only
@@ -43,16 +43,16 @@ if(SS_ENABLE_LEGACY)
     list(APPEND SS_CRYPTO_SOURCE stream.c)
 endif()
 if(SS_ENABLE_PLUGINS)
-    set(SS_PLUGIN_SOURCE plugin.c process.c)
+    set(SS_PLUGIN_SOURCE plugin.c process.cpp)
 else()
     set(SS_PLUGIN_SOURCE plugin_disabled.c)
 endif()
 
 set(SS_SHARED_SOURCES
-        ppbloom.c
+        ppbloom.cpp
         utils.c
         jconf.c
-        json.c
+        json.cpp
         netutils.c
         )
 if (MINGW)
@@ -62,10 +62,10 @@ endif ()
 set(LIBSHADOWSOCKS_LIBEV_SOURCE
         ${SS_SHARED_SOURCES}
         udprelay.c
-        cache.c
+        cache.cpp
         local.c
         resolv.c
-        ssurl.c
+        ssurl.cpp
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}
         ${SS_ACL_SOURCE}
@@ -79,7 +79,7 @@ set(SS_LOCAL_SOURCE
 set(SS_TUNNEL_SOURCE
         ${SS_SHARED_SOURCES}
         udprelay.c
-        cache.c
+        cache.cpp
         tunnel.c
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}
@@ -88,7 +88,7 @@ set(SS_TUNNEL_SOURCE
 set(SS_SERVER_SOURCE
         ${SS_SHARED_SOURCES}
         udprelay.c
-        cache.c
+        cache.cpp
         resolv.c
         server.c
         ${SS_CRYPTO_SOURCE}
@@ -104,7 +104,7 @@ set(SS_MANAGER_SOURCE
 set(SS_REDIR_SOURCE
         ${SS_SHARED_SOURCES}
         udprelay.c
-        cache.c
+        cache.cpp
         redir.c
         ${SS_CRYPTO_SOURCE}
         ${SS_PLUGIN_SOURCE}

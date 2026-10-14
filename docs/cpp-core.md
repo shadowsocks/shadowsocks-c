@@ -43,7 +43,7 @@ All binaries are still built from the C sources.
 | `ref.hpp` | `RefCounted<T>`/`RefPtr<T>`, intrusive shared ownership for the few genuinely shared objects (AEAD-2022 UDP sessions). Used instead of `std::shared_ptr` because its control block cannot be pooled portably. |
 | `buffer.hpp` | `FixedBuffer<N>`: inline bytes with `std::span` views; replaces `buffer_t`. |
 | `arena.hpp` | `MonotonicArena` for configuration data that lives as long as the process. |
-| `fixed_map.hpp` | `FixedHashMap` (open addressing, backward-shift deletion) and `FixedLru`; replace uthash and `cache.c`. |
+| `fixed_map.hpp` | `FixedHashMap` (open addressing, backward-shift deletion) and `FixedLru`; replace uthash and `cache.cpp`. |
 | `intrusive_list.hpp` | `IntrusiveList`/`ListNode`; replaces `ss_list`. Nodes unlink themselves when destroyed. |
 | `fixed_heap.hpp` | Bounded size-class allocator to hand to libuv, c-ares and Mbed TLS through their allocator hooks. |
 

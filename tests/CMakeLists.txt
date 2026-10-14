@@ -60,6 +60,7 @@ endfunction()
 # C++ core (src/core): header-only ownership and allocation primitives.
 foreach(core_test result pool buffer arena fixed_map ownership)
     ss_add_test(test_core_${core_test} "test_core_${core_test}.cpp" "")
+    ss_strict_warnings(test_core_${core_test})
 endforeach()
 
 # C++ sources under src/ must not allocate on the heap (see the script).
@@ -68,11 +69,30 @@ if(Python3_Interpreter_FOUND)
     add_test(NAME check_no_heap
         COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check_no_heap.py --self-test)
     set_tests_properties(check_no_heap PROPERTIES LABELS "unit")
+
+    # The programs and the static library must stay usable without a C++
+    # runtime library (see docs/cpp-core.md). Sanitizer runtimes bring their
+    # own C++ symbols, so skip the check there.
+    set(SS_RUNTIME_CHECKED)
+    foreach(target ss-local ss-server ss-tunnel ss-redir ss-manager shadowsocks-c-static)
+        if(TARGET ${target})
+            get_target_property(excluded ${target} EXCLUDE_FROM_ALL)
+            if(NOT excluded)
+                list(APPEND SS_RUNTIME_CHECKED $<TARGET_FILE:${target}>)
+            endif()
+        endif()
+    endforeach()
+    if(SS_RUNTIME_CHECKED AND CMAKE_NM AND NOT ENABLE_SANITIZERS)
+        add_test(NAME check_cxx_runtime
+            COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check_cxx_runtime.py
+                    --nm ${CMAKE_NM} ${SS_RUNTIME_CHECKED})
+        set_tests_properties(check_cxx_runtime PROPERTIES LABELS "unit")
+    endif()
 endif()
 
 # test_base64 - no external deps
 ss_add_test(test_base64
-    "test_base64.c;${PROJECT_SOURCE_DIR}/src/base64.c"
+    "test_base64.c;${PROJECT_SOURCE_DIR}/src/base64.cpp"
     "")
 
 # test_utils - needs sodium (for ss_malloc -> uses sodium in utils.c)
@@ -82,12 +102,12 @@ ss_add_test(test_utils
 
 # test_json - standalone json parser
 ss_add_test(test_json
-    "test_json.c;${PROJECT_SOURCE_DIR}/src/json.c"
+    "test_json.c;${PROJECT_SOURCE_DIR}/src/json.cpp"
     "${SS_MATH_LIBRARY}")
 
 # test_ssurl - ss:// URI parsing (SIP002 and legacy)
 ss_add_test(test_ssurl
-    "test_ssurl.c;${PROJECT_SOURCE_DIR}/src/ssurl.c;${PROJECT_SOURCE_DIR}/src/base64.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_ssurl.c;${PROJECT_SOURCE_DIR}/src/ssurl.cpp;${PROJECT_SOURCE_DIR}/src/base64.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "ss_sodium")
 
 # test_netutils - address parsing and resolver integration
@@ -102,14 +122,14 @@ ss_add_test(test_netutils
 
 # test_cache - expiration uses a platform monotonic clock
 ss_add_test(test_cache
-    "test_cache.c;${PROJECT_SOURCE_DIR}/src/cache.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_cache.c;${PROJECT_SOURCE_DIR}/src/cache.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "ss_sodium")
 
 # test_ppbloom - needs bloom
 set(TEST_PPBLOOM_LIBS "")
 list(APPEND TEST_PPBLOOM_LIBS bloom)
 ss_add_test(test_ppbloom
-    "test_ppbloom.c;${PROJECT_SOURCE_DIR}/src/ppbloom.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_ppbloom.c;${PROJECT_SOURCE_DIR}/src/ppbloom.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_PPBLOOM_LIBS};ss_sodium;${SS_MATH_LIBRARY}")
 
 if(SS_ENABLE_REGEX)
@@ -119,13 +139,13 @@ set(TEST_RULE_LIBS
     ss_sodium
 )
 ss_add_test(test_rule
-    "test_rule.c;${PROJECT_SOURCE_DIR}/src/rule.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_rule.c;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_RULE_LIBS}")
 
 # test_acl - ACL precedence and prefix matching
 set(TEST_ACL_LIBS ${TEST_RULE_LIBS})
 ss_add_test(test_acl
-    "test_acl.c;${PROJECT_SOURCE_DIR}/src/acl.c;${PROJECT_SOURCE_DIR}/src/ipset.c;${PROJECT_SOURCE_DIR}/src/rule.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_acl.c;${PROJECT_SOURCE_DIR}/src/acl.c;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_ACL_LIBS}")
 
 endif()
@@ -137,7 +157,7 @@ set(TEST_JCONF_LIBS
     ss_cares
 )
 ss_add_test(test_jconf
-    "test_jconf.c;${PROJECT_SOURCE_DIR}/src/jconf.c;${PROJECT_SOURCE_DIR}/src/json.c;${PROJECT_SOURCE_DIR}/src/utils.c;${PROJECT_SOURCE_DIR}/src/netutils.c"
+    "test_jconf.c;${PROJECT_SOURCE_DIR}/src/jconf.c;${PROJECT_SOURCE_DIR}/src/json.cpp;${PROJECT_SOURCE_DIR}/src/utils.c;${PROJECT_SOURCE_DIR}/src/netutils.c"
     "${TEST_JCONF_LIBS};${SS_MATH_LIBRARY}")
 
 # Crypto sources shared by the tests that link the crypto layer. The AEAD-2022
@@ -148,9 +168,9 @@ set(SS_CRYPTO_TEST_SOURCES
     ${PROJECT_SOURCE_DIR}/src/aead.c
     ${PROJECT_SOURCE_DIR}/src/aead2022.c
     ${PROJECT_SOURCE_DIR}/src/aead2022_udp.c
-    ${PROJECT_SOURCE_DIR}/src/ppbloom.c
-    ${PROJECT_SOURCE_DIR}/src/cache.c
-    ${PROJECT_SOURCE_DIR}/src/base64.c
+    ${PROJECT_SOURCE_DIR}/src/ppbloom.cpp
+    ${PROJECT_SOURCE_DIR}/src/cache.cpp
+    ${PROJECT_SOURCE_DIR}/src/base64.cpp
     ${PROJECT_SOURCE_DIR}/src/utils.c
 )
 
@@ -200,11 +220,11 @@ add_test(NAME test_ss_setup
 set_tests_properties(test_ss_setup PROPERTIES LABELS "integration")
 
 ss_add_test(test_ipset
-    "test_ipset.c;${PROJECT_SOURCE_DIR}/src/ipset.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_ipset.c;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "ss_sodium")
 
 ss_add_test(test_process
-    "test_process.c;${PROJECT_SOURCE_DIR}/src/process.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_process.c;${PROJECT_SOURCE_DIR}/src/process.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "ss_sodium")
 set_tests_properties(test_process PROPERTIES TIMEOUT 20)
 
@@ -218,7 +238,7 @@ if(SS_ENABLE_REGEX)
     list(APPEND TEST_LITERAL_LIBS ss_pcre2)
 endif()
 ss_add_test(test_acl_literal
-    "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.c;${PROJECT_SOURCE_DIR}/src/ipset.c;${PROJECT_SOURCE_DIR}/src/rule.c;${PROJECT_SOURCE_DIR}/src/utils.c"
+    "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.c;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.c"
     "${TEST_LITERAL_LIBS}")
 
 ss_add_test(test_event "test_event.c" "ss_ev")
