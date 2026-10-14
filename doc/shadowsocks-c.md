@@ -79,6 +79,8 @@ The config file equivalent of command line options is listed as examples below.
 - `--fast-open`: `"fast_open": true`
 - `--reuse-port`: `"reuse_port": true`
 - `--no-delay`: `"no_delay": true`
+- `--max-connections 1024`: `"max_connections": 1024`
+- `--max-udp-sessions 512`: `"max_udp_sessions": 512`
 - `--printable-salt`: `"printable_salt": true` (ss-local only)
 - `--plugin "obfs-server"`: `"plugin": "obfs-server"`
 - `--plugin-opts "obfs=http"`: `"plugin_opts": "obfs=http"`

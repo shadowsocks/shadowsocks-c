@@ -389,6 +389,10 @@ read_jconf(const char *file)
                 conf.tcp_outgoing_rcvbuf = to_nonnegative_int(value, name);
             } else if (strcmp(name, "auth") == 0) {
                 FATAL("One time auth has been deprecated. Try AEAD ciphers instead.");
+            } else if (strcmp(name, "max_connections") == 0) {
+                conf.max_connections = to_nonnegative_int(value, name);
+            } else if (strcmp(name, "max_udp_sessions") == 0) {
+                conf.max_udp_sessions = to_nonnegative_int(value, name);
             } else if (strcmp(name, "nofile") == 0) {
                 conf.nofile = to_nonnegative_int(value, name);
             } else if (strcmp(name, "nameserver") == 0) {

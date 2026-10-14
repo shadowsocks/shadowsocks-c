@@ -111,6 +111,8 @@ static int mode      = TCP_ONLY;
 static int ipv6first = 0;
 int fast_open        = 0;
 static int no_delay  = 0;
+static int max_connections  = 0;
+static int max_udp_sessions = 0;
 static int printable_salt = 0;
 static int udp_fd    = 0;
 static int ret_val   = 0;
@@ -323,7 +325,7 @@ struct Relays {
         config.kind         = ss::relay::Kind::local;
         config.remote       = *remote;
         config.timeout_secs = timeout;
-        config.max_sessions = 256;
+        config.max_sessions = max_udp_sessions > 0 ? max_udp_sessions : 256;
         config.mtu          = mtu;
         config.iface        = iface;
 #ifdef __ANDROID__
@@ -372,7 +374,7 @@ fill_tcp_config(ss::relay::TcpConfig &config, const struct sockaddr_storage *rem
     config.kind             = ss::relay::Kind::local;
     config.remotes          = { remotes, (size_t)remote_count };
     config.timeout_secs     = timeout;
-    config.max_connections  = DEFAULT_MAX_CONNECTIONS;
+    config.max_connections  = max_connections > 0 ? max_connections : DEFAULT_MAX_CONNECTIONS;
     config.fast_open        = fast_open != 0;
     config.no_delay         = no_delay != 0;
     config.printable_salt   = printable_salt != 0;
@@ -616,6 +618,8 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 \snippet{doc} utils.cpp cli_long_tcp_outgoing_rcvbuf
 \snippet{doc} utils.cpp cli_long_fast_open
 \snippet{doc} utils.cpp cli_long_no_delay
+\snippet{doc} utils.cpp cli_long_max_connections
+\snippet{doc} utils.cpp cli_long_max_udp_sessions
 \snippet{doc} utils.cpp cli_long_acl
 \snippet{doc} utils.cpp cli_long_mtu
 \snippet{doc} utils.cpp cli_long_mptcp
@@ -658,6 +662,8 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
         { "fast-open",   no_argument,       NULL, GETOPT_VAL_FAST_OPEN   },
         { "printable-salt", no_argument, NULL, GETOPT_VAL_PRINTABLE_SALT },
         { "no-delay",    no_argument,       NULL, GETOPT_VAL_NODELAY     },
+        { "max-connections", required_argument, NULL, GETOPT_VAL_MAX_CONNECTIONS },
+        { "max-udp-sessions", required_argument, NULL, GETOPT_VAL_MAX_UDP_SESSIONS },
         { "acl",         required_argument, NULL, GETOPT_VAL_ACL         },
         { "mtu",         required_argument, NULL, GETOPT_VAL_MTU         },
         { "mptcp",       no_argument,       NULL, GETOPT_VAL_MPTCP       },
@@ -715,6 +721,16 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
             break;
         case GETOPT_VAL_PRINTABLE_SALT:
             printable_salt = 1;
+            break;
+        case GETOPT_VAL_MAX_CONNECTIONS:
+            if (ss_parse_int(optarg, 1, 1 << 20, &max_connections) == -1) {
+                cli_error("invalid connection limit", c, NULL);
+            }
+            break;
+        case GETOPT_VAL_MAX_UDP_SESSIONS:
+            if (ss_parse_int(optarg, 1, 1 << 20, &max_udp_sessions) == -1) {
+                cli_error("invalid UDP session limit", c, NULL);
+            }
             break;
         case GETOPT_VAL_NODELAY:
             no_delay = 1;
@@ -956,6 +972,12 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
         }
         if (no_delay == 0) {
             no_delay = conf->no_delay;
+        }
+        if (max_connections == 0) {
+            max_connections = conf->max_connections;
+        }
+        if (max_udp_sessions == 0) {
+            max_udp_sessions = conf->max_udp_sessions;
         }
         if (printable_salt == 0) {
             printable_salt = conf->printable_salt;

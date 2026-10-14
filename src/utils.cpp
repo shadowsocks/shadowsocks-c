@@ -485,6 +485,20 @@ Only available with MPTCP enabled Linux kernel.
 Enable TCP_NODELAY.
 [cli_long_no_delay] */
 
+/* [cli_long_max_connections]
+\par `--max-connections <number>`
+Serve at most this many TCP connections at once (default: 1024). Their
+memory is reserved at startup; a connection beyond the limit is refused
+until another one closes.
+[cli_long_max_connections] */
+
+/* [cli_long_max_udp_sessions]
+\par `--max-udp-sessions <number>`
+Keep at most this many UDP associations (default: 256 for clients, 512
+for ss-server). When the table is full, the least recently used one is
+dropped.
+[cli_long_max_udp_sessions] */
+
 /* [cli_long_tcp_incoming_sndbuf]
 \par `--tcp-incoming-sndbuf <size>`
 Set TCP send buffer size for incoming connections.
@@ -704,6 +718,10 @@ usage(void)
     cli_help_option("--fast-open", "Enable TCP Fast Open where supported.");
     cli_help_option("--reuse-port", "Enable port reuse where supported.");
     cli_help_option("--no-delay", "Enable TCP_NODELAY.");
+#ifndef MODULE_MANAGER
+    cli_help_option("--max-connections NUMBER", "TCP connections served at once (default: 1024).");
+    cli_help_option("--max-udp-sessions NUMBER", "UDP associations kept (default: 256; ss-server 512).");
+#endif
 #ifdef MODULE_LOCAL
     cli_help_option("--printable-salt", "Experimental printable TCP salt (chacha20-ietf-poly1305/aes-256-gcm only).");
 #endif

@@ -382,6 +382,10 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
         if(SS_ENABLE_LEGACY)
             list(APPEND SS_TUNNEL_INTEROP_ARGS --legacy)
         endif()
+        add_test(NAME test_limits
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_limits.py
+                    --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+        set_tests_properties(test_limits PROPERTIES LABELS "integration" TIMEOUT 60)
         add_test(NAME test_tunnel_interop
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tunnel_interop.py ${SS_TUNNEL_INTEROP_ARGS})
         set_tests_properties(test_tunnel_interop PROPERTIES LABELS "integration" TIMEOUT 300)

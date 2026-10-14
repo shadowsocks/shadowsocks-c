@@ -98,6 +98,8 @@ static int nofile = 0;
 #endif
 int fast_open       = 0;
 static int no_delay = 0;
+static int max_connections  = 0;
+static int max_udp_sessions = 0;
 static int ret_val  = 0;
 
 static struct ss_signal sigint_watcher;
@@ -387,6 +389,8 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
 \snippet{doc} utils.cpp cli_long_tcp_outgoing_sndbuf
 \snippet{doc} utils.cpp cli_long_tcp_outgoing_rcvbuf
 \snippet{doc} utils.cpp cli_long_no_delay
+\snippet{doc} utils.cpp cli_long_max_connections
+\snippet{doc} utils.cpp cli_long_max_udp_sessions
 \snippet{doc} utils.cpp cli_long_password
 \snippet{doc} utils.cpp cli_long_key
 \snippet{doc} utils.cpp cli_long_help
@@ -421,6 +425,8 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         { "tcp-outgoing-sndbuf", required_argument, NULL, GETOPT_VAL_TCP_OUTGOING_SNDBUF },
         { "tcp-outgoing-rcvbuf", required_argument, NULL, GETOPT_VAL_TCP_OUTGOING_RCVBUF },
         { "no-delay",    no_argument,       NULL, GETOPT_VAL_NODELAY     },
+        { "max-connections", required_argument, NULL, GETOPT_VAL_MAX_CONNECTIONS },
+        { "max-udp-sessions", required_argument, NULL, GETOPT_VAL_MAX_UDP_SESSIONS },
         { "password",    required_argument, NULL, GETOPT_VAL_PASSWORD    },
         { "key",         required_argument, NULL, GETOPT_VAL_KEY         },
         { "help",        no_argument,       NULL, GETOPT_VAL_HELP        },
@@ -460,6 +466,16 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
             mptcp = get_mptcp(1);
             if (mptcp)
                 LOGI("enable multipath TCP (%s)", mptcp > 0 ? "out-of-tree" : "upstream");
+            break;
+        case GETOPT_VAL_MAX_CONNECTIONS:
+            if (ss_parse_int(optarg, 1, 1 << 20, &max_connections) == -1) {
+                cli_error("invalid connection limit", c, NULL);
+            }
+            break;
+        case GETOPT_VAL_MAX_UDP_SESSIONS:
+            if (ss_parse_int(optarg, 1, 1 << 20, &max_udp_sessions) == -1) {
+                cli_error("invalid UDP session limit", c, NULL);
+            }
             break;
         case GETOPT_VAL_NODELAY:
             no_delay = 1;
@@ -655,6 +671,12 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         }
         if (no_delay == 0) {
             no_delay = conf->no_delay;
+        }
+        if (max_connections == 0) {
+            max_connections = conf->max_connections;
+        }
+        if (max_udp_sessions == 0) {
+            max_udp_sessions = conf->max_udp_sessions;
         }
         if (reuse_port == 0) {
             reuse_port = conf->reuse_port;
@@ -866,7 +888,7 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         ss::relay::UdpConfig udp_config;
         udp_config.kind         = ss::relay::Kind::redir;
         udp_config.timeout_secs = timeout_secs;
-        udp_config.max_sessions = 256;
+        udp_config.max_sessions = max_udp_sessions > 0 ? max_udp_sessions : 256;
         udp_config.mtu          = mtu;
         udp_config.reuse_port   = reuse_port != 0;
         char *host = remote_addr[0].host;
@@ -883,7 +905,7 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         tcp_config.kind                     = ss::relay::Kind::redir;
         tcp_config.remotes                  = { remote_storage, (size_t)remote_count };
         tcp_config.timeout_secs             = timeout_secs;
-        tcp_config.max_connections          = DEFAULT_MAX_CONNECTIONS;
+        tcp_config.max_connections          = max_connections > 0 ? max_connections : DEFAULT_MAX_CONNECTIONS;
         tcp_config.fast_open                = fast_open != 0;
         tcp_config.no_delay                 = no_delay != 0;
         tcp_config.tproxy                   = tcp_tproxy != 0;

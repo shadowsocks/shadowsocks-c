@@ -142,6 +142,7 @@ Status TcpRelay::init(event::Loop &loop, Method &method, const TcpConfig &config
     idle_list_.set_timeout(std::max<std::uint64_t>(MIN_TCP_IDLE_TIMEOUT, timeout) * 1000);
     SS_TRY(timer_.open(loop, *this));
     own_closed_ = false;
+    LOGI("tcp: up to %u connections (%zu KiB each)", config.max_connections, sizeof(Connection) / 1024);
     return {};
 }
 

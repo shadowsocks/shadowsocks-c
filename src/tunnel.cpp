@@ -113,6 +113,8 @@ static int mode      = TCP_ONLY;
 static int nofile = 0;
 #endif
 static int no_delay = 0;
+static int max_connections  = 0;
+static int max_udp_sessions = 0;
 int fast_open       = 0;
 static int ret_val  = 0;
 
@@ -411,6 +413,8 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
 \snippet{doc} utils.cpp cli_long_fast_open
 \snippet{doc} utils.cpp cli_long_mtu
 \snippet{doc} utils.cpp cli_long_no_delay
+\snippet{doc} utils.cpp cli_long_max_connections
+\snippet{doc} utils.cpp cli_long_max_udp_sessions
 \snippet{doc} utils.cpp cli_long_mptcp
 \snippet{doc} utils.cpp cli_long_plugin
 \snippet{doc} utils.cpp cli_long_plugin_opts
@@ -449,6 +453,8 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         { "fast-open",   no_argument,       NULL, GETOPT_VAL_FAST_OPEN   },
         { "mtu",         required_argument, NULL, GETOPT_VAL_MTU         },
         { "no-delay",    no_argument,       NULL, GETOPT_VAL_NODELAY     },
+        { "max-connections", required_argument, NULL, GETOPT_VAL_MAX_CONNECTIONS },
+        { "max-udp-sessions", required_argument, NULL, GETOPT_VAL_MAX_UDP_SESSIONS },
         { "mptcp",       no_argument,       NULL, GETOPT_VAL_MPTCP       },
         { "plugin",      required_argument, NULL, GETOPT_VAL_PLUGIN      },
         { "plugin-opts", required_argument, NULL, GETOPT_VAL_PLUGIN_OPTS },
@@ -501,6 +507,16 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
             mptcp = get_mptcp(1);
             if (mptcp)
                 LOGI("enable multipath TCP (%s)", mptcp > 0 ? "out-of-tree" : "upstream");
+            break;
+        case GETOPT_VAL_MAX_CONNECTIONS:
+            if (ss_parse_int(optarg, 1, 1 << 20, &max_connections) == -1) {
+                cli_error("invalid connection limit", c, NULL);
+            }
+            break;
+        case GETOPT_VAL_MAX_UDP_SESSIONS:
+            if (ss_parse_int(optarg, 1, 1 << 20, &max_udp_sessions) == -1) {
+                cli_error("invalid UDP session limit", c, NULL);
+            }
             break;
         case GETOPT_VAL_NODELAY:
             no_delay = 1;
@@ -707,6 +723,12 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         }
         if (no_delay == 0) {
             no_delay = conf->no_delay;
+        }
+        if (max_connections == 0) {
+            max_connections = conf->max_connections;
+        }
+        if (max_udp_sessions == 0) {
+            max_udp_sessions = conf->max_udp_sessions;
         }
         if (reuse_port == 0) {
             reuse_port = conf->reuse_port;
@@ -965,7 +987,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     tcp_config.kind              = ss::relay::Kind::tunnel;
     tcp_config.remotes           = { remote_storage, (size_t)remote_count };
     tcp_config.timeout_secs      = timeout_secs;
-    tcp_config.max_connections   = DEFAULT_MAX_CONNECTIONS;
+    tcp_config.max_connections   = max_connections > 0 ? max_connections : DEFAULT_MAX_CONNECTIONS;
     tcp_config.fast_open         = fast_open != 0;
     tcp_config.no_delay          = no_delay != 0;
     tcp_config.upstream.sndbuf   = tcp_outgoing_sndbuf;
@@ -1025,7 +1047,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         udp_config.tunnel_target     = tcp_config.tunnel_target;
         udp_config.tunnel_target_len = tcp_config.tunnel_target_len;
         udp_config.timeout_secs      = timeout_secs;
-        udp_config.max_sessions      = 256;
+        udp_config.max_sessions      = max_udp_sessions > 0 ? max_udp_sessions : 256;
         udp_config.mtu               = mtu;
         udp_config.iface             = iface;
 #ifdef __ANDROID__
