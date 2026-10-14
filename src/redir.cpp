@@ -118,7 +118,7 @@ getdestaddr(int fd, struct sockaddr_storage *destaddr)
     int error         = 0;
 
     if (tcp_tproxy) {
-        error = getsockname(fd, (void *)destaddr, &socklen);
+        error = getsockname(fd, (struct sockaddr *)destaddr, &socklen);
     } else {
         error = getsockopt(fd, SOL_IPV6, IP6T_SO_ORIGINAL_DST, destaddr, &socklen);
         if (error) { // Didn't find a proper way to detect IP version.
@@ -1576,7 +1576,7 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         // Handle additionals TOS/DSCP listening ports
         if (dscp_num > 0) {
             listen_ctx_current      = (listen_ctx_t *)ss_malloc(sizeof(listen_ctx_t));
-            listen_ctx_current      = memcpy(listen_ctx_current, &listen_ctx, sizeof(listen_ctx_t));
+            listen_ctx_current      = (listen_ctx_t *)memcpy(listen_ctx_current, &listen_ctx, sizeof(listen_ctx_t));
             local_port              = dscp[dscp_num - 1].port;
             listen_ctx_current->tos = dscp[dscp_num - 1].dscp << 2;
         }
