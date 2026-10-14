@@ -145,14 +145,14 @@ ss_add_test(test_netutils
 
 # test_cache - expiration uses a platform monotonic clock
 ss_add_test(test_cache
-    "test_cache.c;${PROJECT_SOURCE_DIR}/src/cache.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_cache.c;${CMAKE_CURRENT_SOURCE_DIR}/reference/cache.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 # test_cache_cpp - fixed-capacity cache edge cases
 ss_add_test(test_cache_cpp
-    "test_cache_cpp.cpp;${PROJECT_SOURCE_DIR}/src/cache.cpp"
+    "test_cache_cpp.cpp;${CMAKE_CURRENT_SOURCE_DIR}/reference/cache.cpp"
     "ss_sodium")
-ss_strict_warnings(test_cache_cpp.cpp ${PROJECT_SOURCE_DIR}/src/cache.cpp)
+ss_strict_warnings(test_cache_cpp.cpp ${CMAKE_CURRENT_SOURCE_DIR}/reference/cache.cpp)
 
 # test_ppbloom - needs bloom
 set(TEST_PPBLOOM_LIBS "")
@@ -167,8 +167,8 @@ set(TEST_RULE_LIBS
     ss_pcre2
     ss_sodium
 )
-ss_add_test(test_rule
-    "test_rule.c;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+ss_add_test(test_rule_cpp
+    "test_rule_cpp.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_RULE_LIBS}")
 
 # test_acl - ACL precedence and prefix matching
@@ -199,7 +199,7 @@ set(SS_CRYPTO_TEST_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/reference/aead2022.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/reference/aead2022_udp.cpp
     ${PROJECT_SOURCE_DIR}/src/ppbloom.cpp
-    ${PROJECT_SOURCE_DIR}/src/cache.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/reference/cache.cpp
     ${PROJECT_SOURCE_DIR}/src/base64.cpp
     ${PROJECT_SOURCE_DIR}/src/utils.cpp
 )

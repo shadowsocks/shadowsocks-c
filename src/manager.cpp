@@ -43,6 +43,7 @@
 
 #include <netdb.h>
 #include <errno.h>
+#include <new>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -79,18 +80,12 @@ size_t working_dir_size = 0;
 
 /* The managed servers, looked up by port. There are at most MAX_PORT_NUM,
  * and lookups only happen on control messages, so a list does. */
-static struct ss_list server_table;
+static ss::IntrusiveList<struct server> server_table;
 
 static struct server *
 find_server(const char *port)
 {
-    struct ss_list_item *curr, *next;
-    ss_list_foreach_void(&server_table, curr, next) {
-        struct server *server = ss_container_of(curr, struct server, entries);
-        if (strcmp(server->port, port) == 0)
-            return server;
-    }
-    return NULL;
+    return server_table.find_if([port](struct server &server) { return strcmp(server.port, port) == 0; });
 }
 
 static int
@@ -140,6 +135,14 @@ destroy_server(struct server *server)
         ss_free(server->plugin_opts);
     if (server->mode)
         ss_free(server->mode);
+}
+
+static void
+free_server(struct server *server)
+{
+    destroy_server(server);
+    server->~server(); // unlinks it from server_table
+    ss_free(server);
 }
 
 static void
@@ -616,8 +619,7 @@ get_server(char *buf, int len)
         return NULL;
     }
 
-    struct server *server = (struct server *)ss_malloc(sizeof(struct server));
-    memset(server, 0, sizeof(struct server));
+    struct server *server = ::new (ss_malloc(sizeof(struct server))) struct server();
     int valid = 1;
     if (obj->type == json_object) {
         int i = 0;
@@ -685,8 +687,7 @@ get_server(char *buf, int len)
 
     json_value_free(obj);
     if (!valid) {
-        destroy_server(server);
-        ss_free(server);
+        free_server(server);
         return NULL;
     }
     return server;
@@ -864,12 +865,8 @@ add_server(struct manager_ctx *manager, struct server *server)
 
     struct server *replaced = find_server(server->port);
     if (replaced != NULL)
-        ss_list_remove(&replaced->entries);
-    ss_list_add(&server_table, &server->entries);
-    if (replaced != NULL) {
-        destroy_server(replaced);
-        ss_free(replaced);
-    }
+        free_server(replaced);
+    server_table.push_back(*server);
 
     return 0;
 }
@@ -945,9 +942,7 @@ remove_server(char *prefix, char *port)
     old_server = find_server(port);
 
     if (old_server != NULL) {
-        ss_list_remove(&old_server->entries);
-        destroy_server(old_server);
-        ss_free(old_server);
+        free_server(old_server);
     }
 
     stop_server(prefix, port);
@@ -1003,8 +998,7 @@ manager_recv_cb(void *ctx) noexcept
         if (server == NULL || server->port[0] == 0 || server->password[0] == 0) {
             LOGE("invalid command: %s:%s", buf, get_data(buf, r));
             if (server != NULL) {
-                destroy_server(server);
-                ss_free(server);
+                free_server(server);
             }
             goto ERROR_MSG;
         }
@@ -1018,8 +1012,7 @@ manager_recv_cb(void *ctx) noexcept
         if (ret == -1) {
             msg     = (char *)"port is not available";
             msg_len = 21;
-            destroy_server(server);
-            ss_free(server);
+            free_server(server);
         } else {
             msg     = (char *)"ok";
             msg_len = 2;
@@ -1029,13 +1022,12 @@ manager_recv_cb(void *ctx) noexcept
             ERROR("add_sendto");
         }
     } else if (strcmp(action, "list") == 0) {
-        struct ss_list_item *curr, *next;
         char buf[BUF_SIZE];
         memset(buf, 0, BUF_SIZE);
         strcpy(buf, "[");
 
-        ss_list_foreach_void(&server_table, curr, next) {
-            struct server *server = ss_container_of(curr, struct server, entries);
+        for (struct server *server = server_table.front(), *next; server != NULL; server = next) {
+            next = server_table.next(*server);
             char *method          = server->method ? server->method : manager->method;
             char entry_buf[BUF_SIZE];
             size_t entry_pos      = 0;
@@ -1069,15 +1061,13 @@ manager_recv_cb(void *ctx) noexcept
         if (server == NULL || server->port[0] == 0) {
             LOGE("invalid command: %s:%s", buf, get_data(buf, r));
             if (server != NULL) {
-                destroy_server(server);
-                ss_free(server);
+                free_server(server);
             }
             goto ERROR_MSG;
         }
 
         remove_server(working_dir, server->port);
-        destroy_server(server);
-        ss_free(server);
+        free_server(server);
 
         char msg[3] = "ok";
         if (sendto(manager->fd, msg, 2, 0, (struct sockaddr *)&claddr, len) != 2) {
@@ -1095,8 +1085,6 @@ manager_recv_cb(void *ctx) noexcept
         update_stat(port, traffic);
 
     } else if (strcmp(action, "ping") == 0) {
-        struct ss_list_item *curr, *next;
-
         char buf[BUF_SIZE];
         size_t pos = 0;
 
@@ -1105,8 +1093,8 @@ manager_recv_cb(void *ctx) noexcept
             goto ERROR_MSG;
         }
 
-        ss_list_foreach_void(&server_table, curr, next) {
-            struct server *server = ss_container_of(curr, struct server, entries);
+        for (struct server *server = server_table.front(), *next; server != NULL; server = next) {
+            next = server_table.next(*server);
             char entry_buf[64];
             int entry_len = snprintf(entry_buf, sizeof(entry_buf),
                                      "\"%s\":%" PRIu64 ",",
@@ -1769,22 +1757,20 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         FATAL("Couldn't open the directory");
     }
 
-    ss_list_init(&server_table);
 
     if (conf != NULL) {
         for (i = 0; i < conf->port_password_num; i++) {
-            struct server *server = (struct server *)ss_malloc(sizeof(struct server));
-            memset(server, 0, sizeof(struct server));
+            struct server *server = ::new (ss_malloc(sizeof(struct server))) struct server();
             if (copy_port(server->port, sizeof(server->port),
                           conf->port_password[i].port,
                           strlen(conf->port_password[i].port)) == -1) {
                 LOGE("invalid port_password port");
-                ss_free(server);
+                free_server(server);
                 continue;
             }
             if (strlen(conf->port_password[i].password) >= sizeof(server->password)) {
                 LOGE("port_password password is too long");
-                ss_free(server);
+                free_server(server);
                 continue;
             }
             strcpy(server->password, conf->port_password[i].password);
@@ -1846,13 +1832,9 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     }
 
     // Clean up
-    struct ss_list_item *curr, *next;
-    ss_list_foreach_void(&server_table, curr, next) {
-        struct server *server = ss_container_of(curr, struct server, entries);
+    while (struct server *server = server_table.front()) {
         stop_server(working_dir, server->port);
-        ss_list_remove(&server->entries);
-        destroy_server(server);
-        ss_free(server);
+        free_server(server);
     }
 
     program.close();

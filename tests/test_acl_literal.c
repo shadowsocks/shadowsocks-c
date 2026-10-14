@@ -1,8 +1,10 @@
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include "acl.h"
-#include "rule.h"
 int verbose = 0;
 
 int

@@ -84,6 +84,13 @@ public:
     T *front() noexcept { return empty() ? nullptr : owner(head_.next_); }
     T *back() noexcept { return empty() ? nullptr : owner(head_.prev_); }
 
+    // The element after `item` (which must be on this list), or null.
+    T *next(T &item) noexcept
+    {
+        Node *n = node(item)->next_;
+        return n == &head_ ? nullptr : owner(n);
+    }
+
     T *pop_front() noexcept
     {
         T *item = front();
@@ -112,6 +119,18 @@ public:
             f(*owner(p));
             p = next;
         }
+    }
+
+    // The first element `pred` accepts, or null.
+    template <class P>
+    T *find_if(P &&pred)
+    {
+        for (Node *p = head_.next_; p != &head_; p = p->next_) {
+            if (pred(*owner(p))) {
+                return owner(p);
+            }
+        }
+        return nullptr;
     }
 
 private:

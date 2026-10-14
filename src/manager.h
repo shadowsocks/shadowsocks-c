@@ -25,7 +25,7 @@
 
 #include <time.h>
 #include "core.h"
-#include "core.h"
+#include "core/intrusive_list.hpp"
 
 #include "jconf.h"
 
@@ -63,17 +63,17 @@ struct manager_ctx {
 #endif
 };
 
-struct server {
-    struct ss_list_item entries; /* in server_table, at most MAX_PORT_NUM */
-    char port[8];
-    char password[128];
-    char fast_open[8];
-    char no_delay[8];
-    char *mode;
-    char *method;
-    char *plugin;
-    char *plugin_opts;
-    uint64_t traffic;
+/* A managed ss-server, linked into server_table (at most MAX_PORT_NUM). */
+struct server : ss::ListNode<> {
+    char port[8]          = {};
+    char password[128]    = {};
+    char fast_open[8]     = {};
+    char no_delay[8]      = {};
+    char *mode            = nullptr;
+    char *method          = nullptr;
+    char *plugin          = nullptr;
+    char *plugin_opts     = nullptr;
+    uint64_t traffic      = 0;
 };
 
 #ifdef __cplusplus

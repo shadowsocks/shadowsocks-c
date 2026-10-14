@@ -32,21 +32,21 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <new>
+
 #include "rule.h"
 #include "utils.h"
 
 rule_t *
 new_rule()
 {
-    rule_t *rule;
-
-    rule = (rule_t *)calloc(1, sizeof(rule_t));
-    if (rule == NULL) {
+    void *mem = malloc(sizeof(rule_t)); // heap-ok: ACL rules are built at startup
+    if (mem == NULL) {
         ERROR("malloc");
         return NULL;
     }
 
-    return rule;
+    return ::new (mem) rule_t();
 }
 
 int
@@ -67,9 +67,9 @@ accept_rule_arg(rule_t *rule, const char *arg)
 }
 
 void
-add_rule(struct ss_list *rules, rule_t *rule)
+add_rule(rule_list_t *rules, rule_t *rule)
 {
-    ss_list_add(rules, &rule->entries);
+    rules->push_back(*rule);
 }
 
 int
@@ -124,42 +124,38 @@ literal_equal(const char *a, const char *b, size_t length)
     return true;
 }
 
-rule_t *
-lookup_rule(const struct ss_list *rules, const char *name, size_t name_len)
+static bool
+rule_matches(rule_t *rule, const char *name, size_t name_len)
 {
-    struct ss_list_item *curr, *next;
+    if (rule->kind != 0) {
+        size_t length = strlen(rule->literal);
+        return name_len >= length &&
+               (name_len == length || (rule->kind == 2 && name[name_len - length - 1] == '.')) &&
+               literal_equal(name + name_len - length, rule->literal, length);
+    }
+#if SS_ENABLE_REGEX
+    return pcre2_match(rule->pattern_re, (PCRE2_SPTR)name,
+                       name_len, 0, 0, rule->match_data, NULL) >= 0;
+#else
+    return false;
+#endif
+}
 
+rule_t *
+lookup_rule(rule_list_t *rules, const char *name, size_t name_len)
+{
     if (name == NULL) {
         name     = "";
         name_len = 0;
     }
 
-    for (curr = ss_list_start(rules); !ss_list_is_end(rules, curr);
-         curr = next) {
-        next = curr->next;
-        rule_t *rule = ss_container_of(curr, rule_t, entries);
-        if (rule->kind != 0) {
-            size_t length = strlen(rule->literal);
-            if (name_len >= length &&
-                (name_len == length || (rule->kind == 2 && name[name_len - length - 1] == '.')) &&
-                literal_equal(name + name_len - length, rule->literal, length)) return rule;
-            continue;
-        }
-#if SS_ENABLE_REGEX
-        if (pcre2_match(rule->pattern_re, (PCRE2_SPTR)name,
-                        name_len, 0, 0, rule->match_data, NULL) >= 0)
-            return rule;
-#endif
-    }
-
-    return NULL;
+    return rules->find_if([&](rule_t &rule) { return rule_matches(&rule, name, name_len); });
 }
 
 void
 remove_rule(rule_t *rule)
 {
-    ss_list_remove(&rule->entries);
-    free_rule(rule);
+    free_rule(rule); // the destructor unlinks it
 }
 
 void
@@ -175,5 +171,6 @@ free_rule(rule_t *rule)
     if (rule->pattern_re != NULL)
         pcre2_code_free(rule->pattern_re);
 #endif
+    rule->~rule_t();
     ss_free(rule);
 }

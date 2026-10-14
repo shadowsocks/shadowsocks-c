@@ -15,7 +15,6 @@ signature verification.
   commit 437e1add5a2b9a87797d8c648df7cf5f3ee155a8. BSD-2-Clause;
   license and MurmurHash2 source notices retained alongside the sources.
 - BLAKE3 remains in src/blake3; its existing license files remain there.
-- uthash remains in src/uthash.h with its upstream copyright/license notice.
 
 Mbed TLS, c-ares, libuv and PCRE2 use their upstream CMake builds. The local libsodium
 CMake adapter compiles the portable C backends listed in upstream Makefile.am;

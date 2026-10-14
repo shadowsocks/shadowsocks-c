@@ -22,7 +22,7 @@
 
 /*
  * The first implementation was by Oliver Lorenz (ol), olli@olorenz.org,
- * https://olorenz.org, on top of uthash.
+ * https://olorenz.org, originally on top of uthash; now a fixed slab.
  */
 
 #ifndef _CACHE_

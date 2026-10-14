@@ -41,14 +41,14 @@ static struct ss_ipset white_list_ipv6;
 static struct ss_ipset black_list_ipv4;
 static struct ss_ipset black_list_ipv6;
 
-static struct ss_list black_list_rules;
-static struct ss_list white_list_rules;
+static rule_list_t black_list_rules;
+static rule_list_t white_list_rules;
 
 static int acl_mode = BLACK_LIST;
 
 static struct ss_ipset outbound_block_list_ipv4;
 static struct ss_ipset outbound_block_list_ipv6;
-static struct ss_list outbound_block_list_rules;
+static rule_list_t outbound_block_list_rules;
 
 static int
 parse_addr_cidr(const char *str, char *host, size_t host_len, int *cidr)
@@ -125,13 +125,10 @@ init_acl(const char *path)
     ss_ipset_clear(&outbound_block_list_ipv4);
     ss_ipset_clear(&outbound_block_list_ipv6);
 
-    ss_list_init(&black_list_rules);
-    ss_list_init(&white_list_rules);
-    ss_list_init(&outbound_block_list_rules);
 
     struct ss_ipset *list_ipv4  = &black_list_ipv4;
     struct ss_ipset *list_ipv6  = &black_list_ipv6;
-    struct ss_list *rules = &black_list_rules;
+    rule_list_t *rules = &black_list_rules;
 
     FILE *f = fopen(path, "r");
     if (f == NULL) {
@@ -264,13 +261,11 @@ init_acl(const char *path)
 }
 
 void
-free_rules(struct ss_list *rules)
+free_rules(rule_list_t *rules)
 {
-    struct ss_list_item *iter;
-    while ((iter = ss_list_head(rules)) != NULL) {
-        rule_t *rule = ss_container_of(iter, rule_t, entries);
+    rule_t *rule;
+    while ((rule = rules->front()) != NULL)
         remove_rule(rule);
-    }
 }
 
 void

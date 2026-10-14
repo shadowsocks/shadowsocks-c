@@ -32,41 +32,37 @@
 #endif
 
 #include "core.h"
+#include "core/intrusive_list.hpp"
 
 #if SS_ENABLE_REGEX
 #define PCRE2_CODE_UNIT_WIDTH 8
 #include <pcre2.h>
 #endif
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-typedef struct rule {
-    struct ss_list_item entries;
-
-    char *pattern;
+/* A domain rule, linked into one of the ACL's rule lists. Rules are built
+ * while the ACL loads and are immutable afterwards. Destroying a rule
+ * unlinks it. */
+typedef struct rule : ss::ListNode<> {
+    char *pattern = nullptr;
 
     /* 0: regex, 1: full domain, 2: domain suffix (including the apex). */
-    unsigned kind;
-    const char *literal;
+    unsigned kind       = 0;
+    const char *literal = nullptr;
 #if SS_ENABLE_REGEX
     /* Runtime fields */
-    pcre2_code *pattern_re;
-    pcre2_match_data *match_data;
+    pcre2_code *pattern_re         = nullptr;
+    pcre2_match_data *match_data   = nullptr;
 #endif
 } rule_t;
 
-void add_rule(struct ss_list *, rule_t *);
+using rule_list_t = ss::IntrusiveList<rule_t>;
+
+void add_rule(rule_list_t *, rule_t *);
 int init_rule(rule_t *);
-rule_t *lookup_rule(const struct ss_list *, const char *, size_t);
+rule_t *lookup_rule(rule_list_t *, const char *, size_t);
 void free_rule(rule_t *);
 void remove_rule(rule_t *);
 rule_t *new_rule();
 int accept_rule_arg(rule_t *, const char *);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif
