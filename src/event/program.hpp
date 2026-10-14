@@ -29,6 +29,18 @@ public:
     Status init() noexcept { return loop_.init(); }
     Loop &loop() noexcept { return loop_; }
 
+    // In the child after daemonize(): kqueue and epoll descriptors do not
+    // survive fork().
+    Status after_fork() noexcept
+    {
+#ifndef _WIN32
+        if (uv_loop_fork(loop_.native()) != 0) {
+            return fail(Errc::io);
+        }
+#endif
+        return {};
+    }
+
     // SIGINT and SIGTERM end the run (and SIGUSR1 with `usr1`). With
     // `plugin_alive`, SIGCHLD ends it with exit code -1 once that reports
     // the plugin gone. Signals libuv cannot watch on this platform are
