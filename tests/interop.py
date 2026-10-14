@@ -159,7 +159,7 @@ def peers(commands, ports, environment=None):
                 process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, env=environment)
                 processes.append(process)
                 wait_ready(process, port)
-            yield
+            yield processes
         except BaseException:
             for path in logs:
                 print(path.name + ":\n" + path.read_text(errors="replace")[-6000:], flush=True)
