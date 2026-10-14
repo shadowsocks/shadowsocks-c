@@ -2,6 +2,7 @@
 // The C++ SIP022 codecs (src/crypto/aead2022.hpp) differentially against the
 // C implementation in aead2022.cpp / aead2022_udp.cpp, in both roles, plus
 // replay protection and a zero-allocation steady phase.
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <ctime>
