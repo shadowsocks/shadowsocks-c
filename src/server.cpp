@@ -1546,7 +1546,9 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     if (!tcp_resolver.init(tcp_loop, nameservers, ipv6first != 0, max_dns_queries)) {
         FATAL("failed to set up the resolver");
     }
+#ifndef __MINGW32__
     stat_resolver = &tcp_resolver;
+#endif
     if (mode != UDP_ONLY) {
         ss::relay::TcpConfig tcp_config;
         tcp_config.kind            = ss::relay::Kind::server;
@@ -1719,7 +1721,9 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         }
     }
     (void)tcp_running;
+#ifndef __MINGW32__
     stat_resolver = NULL;
+#endif
     program.close();
 
 #ifdef __MINGW32__
