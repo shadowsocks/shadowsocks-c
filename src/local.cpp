@@ -112,6 +112,7 @@ int fast_open        = 0;
 static int no_delay  = 0;
 static int max_connections  = 0;
 static int max_udp_sessions = 0;
+static int max_dns_queries  = 0;
 static int printable_salt = 0;
 static int udp_fd    = 0;
 static int ret_val   = 0;
@@ -294,7 +295,8 @@ struct Relays {
             config.acl_hooks.match_host       = &acl_match_host;
             config.acl_hooks.mode             = &get_acl_mode;
             config.acl_hooks.outbound_blocked = &outbound_block_match_host;
-            if (!resolver.init(*loop, NULL, ipv6first != 0, config.max_connections)) {
+            if (!resolver.init(*loop, NULL, ipv6first != 0,
+                               max_dns_queries > 0 ? (uint32_t)max_dns_queries : config.max_connections)) {
                 return false;
             }
             resolving = true;
@@ -584,6 +586,7 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 \snippet{doc} utils.cpp cli_long_no_delay
 \snippet{doc} utils.cpp cli_long_max_connections
 \snippet{doc} utils.cpp cli_long_max_udp_sessions
+\snippet{doc} utils.cpp cli_long_max_dns_queries
 \snippet{doc} utils.cpp cli_long_acl
 \snippet{doc} utils.cpp cli_long_mtu
 \snippet{doc} utils.cpp cli_long_mptcp
@@ -628,6 +631,7 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
         { "no-delay",    no_argument,       NULL, GETOPT_VAL_NODELAY     },
         { "max-connections", required_argument, NULL, GETOPT_VAL_MAX_CONNECTIONS },
         { "max-udp-sessions", required_argument, NULL, GETOPT_VAL_MAX_UDP_SESSIONS },
+        { "max-dns-queries", required_argument, NULL, GETOPT_VAL_MAX_DNS_QUERIES },
         { "acl",         required_argument, NULL, GETOPT_VAL_ACL         },
         { "mtu",         required_argument, NULL, GETOPT_VAL_MTU         },
         { "mptcp",       no_argument,       NULL, GETOPT_VAL_MPTCP       },
@@ -694,6 +698,11 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
         case GETOPT_VAL_MAX_UDP_SESSIONS:
             if (ss_parse_int(optarg, 1, 1 << 20, &max_udp_sessions) == -1) {
                 cli_error("invalid UDP session limit", c, NULL);
+            }
+            break;
+        case GETOPT_VAL_MAX_DNS_QUERIES:
+            if (ss_parse_int(optarg, 1, 1 << 20, &max_dns_queries) == -1) {
+                cli_error("invalid DNS query limit", c, NULL);
             }
             break;
         case GETOPT_VAL_NODELAY:
@@ -942,6 +951,9 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
         }
         if (max_udp_sessions == 0) {
             max_udp_sessions = conf->max_udp_sessions;
+        }
+        if (max_dns_queries == 0) {
+            max_dns_queries = conf->max_dns_queries;
         }
         if (printable_salt == 0) {
             printable_salt = conf->printable_salt;

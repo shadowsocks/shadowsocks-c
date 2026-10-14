@@ -131,6 +131,7 @@ int fast_open        = 0;
 static int no_delay  = 0;
 static int max_connections  = 0;
 static int max_udp_sessions = 0;
+static int max_dns_queries  = 0;
 static int ret_val   = 0;
 
 #ifdef HAVE_SETRLIMIT
@@ -972,6 +973,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 \snippet{doc} utils.cpp cli_long_no_delay
 \snippet{doc} utils.cpp cli_long_max_connections
 \snippet{doc} utils.cpp cli_long_max_udp_sessions
+\snippet{doc} utils.cpp cli_long_max_dns_queries
 \snippet{doc} utils.cpp cli_long_acl
 \snippet{doc} utils.cpp cli_long_manager_address
 \snippet{doc} utils.cpp cli_long_mtu
@@ -1011,6 +1013,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         { "no-delay",        no_argument,       NULL, GETOPT_VAL_NODELAY     },
         { "max-connections", required_argument, NULL, GETOPT_VAL_MAX_CONNECTIONS },
         { "max-udp-sessions", required_argument, NULL, GETOPT_VAL_MAX_UDP_SESSIONS },
+        { "max-dns-queries", required_argument, NULL, GETOPT_VAL_MAX_DNS_QUERIES },
         { "acl",             required_argument, NULL, GETOPT_VAL_ACL         },
         { "manager-address", required_argument, NULL,
           GETOPT_VAL_MANAGER_ADDRESS },
@@ -1060,6 +1063,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         case GETOPT_VAL_MAX_UDP_SESSIONS:
             if (ss_parse_int(optarg, 1, 1 << 20, &max_udp_sessions) == -1) {
                 cli_error("invalid UDP session limit", c, NULL);
+            }
+            break;
+        case GETOPT_VAL_MAX_DNS_QUERIES:
+            if (ss_parse_int(optarg, 1, 1 << 20, &max_dns_queries) == -1) {
+                cli_error("invalid DNS query limit", c, NULL);
             }
             break;
         case GETOPT_VAL_NODELAY:
@@ -1267,6 +1275,9 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         }
         if (max_udp_sessions == 0) {
             max_udp_sessions = conf->max_udp_sessions;
+        }
+        if (max_dns_queries == 0) {
+            max_dns_queries = conf->max_dns_queries;
         }
         if (reuse_port == 0) {
             reuse_port = conf->reuse_port;
@@ -1530,8 +1541,9 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     ss::relay::TcpRelay tcp_relay;
     ss::relay::UdpRelay udp_relay;
     bool tcp_running = false;
-    if (!tcp_resolver.init(tcp_loop, nameservers, ipv6first != 0,
-                           (max_connections > 0 ? max_connections : DEFAULT_MAX_CONNECTIONS) + 64)) {
+    if (max_dns_queries == 0)
+        max_dns_queries = (max_connections > 0 ? max_connections : DEFAULT_MAX_CONNECTIONS) + 64;
+    if (!tcp_resolver.init(tcp_loop, nameservers, ipv6first != 0, max_dns_queries)) {
         FATAL("failed to set up the resolver");
     }
     stat_resolver = &tcp_resolver;

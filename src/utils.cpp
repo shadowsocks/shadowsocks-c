@@ -498,6 +498,13 @@ for ss-server). When the table is full, the least recently used one is
 dropped.
 [cli_long_max_udp_sessions] */
 
+/* [cli_long_max_dns_queries]
+\par `--max-dns-queries <number>`
+Run at most this many DNS lookups at once (default: the connection limit;
+ss-server adds 64). Beyond the limit ss-server closes the connection that
+needed the lookup, and ss-local applies its ACL without the address.
+[cli_long_max_dns_queries] */
+
 /* [cli_long_tcp_incoming_sndbuf]
 \par `--tcp-incoming-sndbuf <size>`
 Set TCP send buffer size for incoming connections.
@@ -720,6 +727,9 @@ usage(void)
 #ifndef MODULE_MANAGER
     cli_help_option("--max-connections NUMBER", "TCP connections served at once (default: 1024).");
     cli_help_option("--max-udp-sessions NUMBER", "UDP associations kept (default: 256; ss-server 512).");
+#endif
+#if defined(MODULE_REMOTE) || (defined(MODULE_LOCAL) && !defined(MODULE_TUNNEL) && !defined(MODULE_REDIR))
+    cli_help_option("--max-dns-queries NUMBER", "DNS lookups in flight (default: the connection limit).");
 #endif
 #ifdef MODULE_LOCAL
     cli_help_option("--printable-salt", "Experimental printable TCP salt (chacha20-ietf-poly1305/aes-256-gcm only).");

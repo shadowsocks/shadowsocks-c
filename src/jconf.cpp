@@ -393,6 +393,8 @@ read_jconf(const char *file)
                 conf.max_connections = to_nonnegative_int(value, name);
             } else if (strcmp(name, "max_udp_sessions") == 0) {
                 conf.max_udp_sessions = to_nonnegative_int(value, name);
+            } else if (strcmp(name, "max_dns_queries") == 0) {
+                conf.max_dns_queries = to_nonnegative_int(value, name);
             } else if (strcmp(name, "nofile") == 0) {
                 conf.nofile = to_nonnegative_int(value, name);
             } else if (strcmp(name, "nameserver") == 0) {

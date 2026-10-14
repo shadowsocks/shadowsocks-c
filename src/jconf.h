@@ -94,6 +94,7 @@ typedef struct {
     int no_delay;
     int max_connections;
     int max_udp_sessions;
+    int max_dns_queries;
     int printable_salt;
     int tcp_tproxy;
     char *workdir;
