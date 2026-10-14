@@ -280,7 +280,7 @@ std::size_t encode_socks_host(const char *host, std::uint16_t port, std::uint8_t
         }
         out[at++] = 3;
         out[at++] = static_cast<std::uint8_t>(n);
-        std::memcpy(out + at, host, n);
+        std::memcpy(out + at, host, n); // NOLINT(bugprone-not-null-terminated-result): binary, length-prefixed
         at += n;
     }
     std::memcpy(out + at, &be, 2);

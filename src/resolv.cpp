@@ -113,7 +113,7 @@ resolv_shutdown(struct ss_loop *)
     static bool closed;
     closed = false;
     resolver->shutdown(ss::CloseCompletion([](void *, std::uint32_t) { closed = true; }, nullptr, 0));
-    while (!closed) {
+    while (!closed) { // NOLINT(bugprone-infinite-loop): the completion callback sets it
         loop->run_nowait();
     }
     std::destroy_at(resolver);

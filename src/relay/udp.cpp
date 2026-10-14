@@ -447,6 +447,9 @@ UdpSession *UdpRelay::session_for(std::uint8_t listener, const sockaddr_storage 
     std::memcpy(raw.data(), &family, sizeof(int));
     std::memcpy(raw.data() + sizeof(int), &client, sizeof(sockaddr_storage));
     auto key = Key::from(raw);
+    if (!key) {
+        return nullptr;
+    }
     if (PoolPtr<UdpSession> *found = sessions_.find(*key)) {
         return found->get();
     }
@@ -486,8 +489,9 @@ void UdpRelay::expire(UdpSession &session) noexcept
     if (verbose) {
         LOGI("[udp] connection timeout");
     }
-    auto key = Key::from(session.key_);
-    (void)sessions_.take(*key); // the PoolPtr dies here and closes the session
+    if (auto key = Key::from(session.key_)) {
+        (void)sessions_.take(*key); // the PoolPtr dies here and closes the session
+    }
 }
 
 void UdpRelay::client_packet(Listener &listener, const sockaddr_storage &from, std::span<std::uint8_t> packet,
@@ -567,6 +571,9 @@ void UdpRelay::client_packet(Listener &listener, const sockaddr_storage &from, s
 RefPtr<Shared2022> UdpRelay::shared_for(const std::array<std::uint8_t, crypto::kSessionIdLen> &id) noexcept
 {
     auto key = FixedKey<crypto::kSessionIdLen>::from(std::as_bytes(std::span(id)));
+    if (!key) {
+        return nullptr;
+    }
     std::uint64_t now = now_secs();
     if (RefPtr<Shared2022> *found = shared_.find(*key)) {
         (*found)->last_used = now;
