@@ -290,11 +290,16 @@ Status UdpRelay::init(event::Loop &loop, Method &method, const UdpConfig &config
     config_   = config;
     std::uint64_t seed = 0;
     randombytes_buf(&seed, sizeof(seed));
-    SS_TRY(pool_.reserve(config.max_sessions));
+    // An evicted session keeps its pool slot until its socket's close
+    // callback runs on a later loop iteration, so the pool needs room for
+    // a table's worth of closing sessions next to the live ones.
+    SS_TRY(pool_.reserve(2 * config.max_sessions));
     SS_TRY(sessions_.reserve(config.max_sessions, seed));
     if (config.kind == Kind::server) {
         if (method.psk() != nullptr) {
-            SS_TRY(shared_pool_.reserve(config.max_sessions_2022));
+            // An entry evicted from shared_ stays alive while a relay
+            // session still references it (at most one per session).
+            SS_TRY(shared_pool_.reserve(config.max_sessions_2022 + config.max_sessions));
             SS_TRY(shared_.reserve(config.max_sessions_2022, seed ^ 0x9E3779B97F4A7C15ULL));
         }
         SS_TRY(pending_.reserve(config.max_pending_dns));
