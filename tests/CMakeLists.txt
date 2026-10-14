@@ -12,7 +12,7 @@ endif()
 
 # Some hosts (notably macOS, whose default soft limit is 256) start test
 # processes with too few file descriptors for descriptor-heavy tests such as
-# test_event. Raise the soft limit before exec'ing each test; a failure to
+# test_event_cpp. Raise the soft limit before exec'ing each test; a failure to
 # raise it (hard limit too low) is ignored so the test still runs.
 if(NOT WIN32)
     set(SS_TEST_LAUNCHER sh -c "ulimit -n 1024 2>/dev/null\; exec \"$0\" \"$@\"")
@@ -274,10 +274,14 @@ ss_add_test(test_process
     "ss_sodium")
 set_tests_properties(test_process PROPERTIES TIMEOUT 20)
 
-ss_add_test(test_resolv
-    "test_resolv.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/relay/resolver.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
-    "ss_ev;ss_cares;ss_sodium")
-set_tests_properties(test_resolv PROPERTIES TIMEOUT 20)
+if(UNIX)
+    # The resolver against a delayed local DNS server.
+    ss_add_test(test_resolver_cpp
+        "test_resolver_cpp.cpp;${PROJECT_SOURCE_DIR}/src/relay/resolver.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+        "ss_ev;ss_cares;ss_sodium")
+    ss_strict_warnings(test_resolver_cpp.cpp)
+    set_tests_properties(test_resolver_cpp PROPERTIES TIMEOUT 30)
+endif()
 
 set(TEST_LITERAL_LIBS ss_sodium)
 if(SS_ENABLE_REGEX)
@@ -287,12 +291,6 @@ ss_add_test(test_acl_literal
     "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_LITERAL_LIBS}")
 
-ss_add_test(test_event "test_event.c" "ss_ev")
-set_tests_properties(test_event PROPERTIES TIMEOUT 30)
-ss_add_test(test_resolv_async
-    "test_resolv_async.c;${PROJECT_SOURCE_DIR}/src/resolv.cpp;${PROJECT_SOURCE_DIR}/src/relay/resolver.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
-    "ss_ev;ss_cares;ss_sodium")
-set_tests_properties(test_resolv_async PROPERTIES TIMEOUT 30)
 
 # Preloadable malloc counter for the allocation audit. It interposes the
 # system allocator, so it is only built where that is supported (glibc,

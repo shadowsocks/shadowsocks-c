@@ -78,7 +78,6 @@ set(LIBSHADOWSOCKS_LIBEV_SOURCE
         ${SS_SHARED_SOURCES}
         cache.cpp
         local.cpp
-        resolv.cpp
         ssurl.cpp
         ${SS_RELAY_SOURCE}
         ${SS_CRYPTO_SOURCE}
@@ -103,7 +102,6 @@ set(SS_TUNNEL_SOURCE
 set(SS_SERVER_SOURCE
         ${SS_SHARED_SOURCES}
         cache.cpp
-        resolv.cpp
         server.cpp
         ${SS_RELAY_SOURCE}
         ${SS_CRYPTO_SOURCE}
@@ -139,7 +137,7 @@ if(ENABLE_NFTABLES)
 endif()
 
 # Modules rewritten in C++ compile with the stricter warning set.
-ss_strict_warnings(cache.cpp resolv.cpp ${SS_RELAY_SOURCE})
+ss_strict_warnings(cache.cpp ${SS_RELAY_SOURCE})
 
 function(ss_program name module sources)
     add_executable(${name} ${sources})

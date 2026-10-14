@@ -51,12 +51,12 @@
 #include "netutils.h"
 #include "utils.h"
 #include "common.h"
-#include "ss_event.h"
 #include "crypto.h"
 #include "jconf.h"
 #include "common.h"
 
 #include "core/heap_guard.hpp"
+#include "event/program.hpp"
 #include "relay/tcp.hpp"
 #include "relay/udp.hpp"
 
@@ -102,9 +102,6 @@ static int max_connections  = 0;
 static int max_udp_sessions = 0;
 static int ret_val  = 0;
 
-static struct ss_signal sigint_watcher;
-static struct ss_signal sigterm_watcher;
-static struct ss_signal sigchld_watcher;
 
 static int tcp_tproxy = 0; /* use tproxy instead of redirect (for tcp) */
 
@@ -202,26 +199,11 @@ create_and_bind(const char *addr, const char *port)
     return listen_sock;
 }
 
-static void
-signal_cb(SS_P_ ss_signal *w, int revents)
-{
-    if (revents & SS_SIGNAL) {
-        switch (w->signum) {
-        case SIGCHLD:
-            if (!is_plugin_running()) {
-                LOGE("plugin service exit unexpectedly");
-                ret_val = -1;
-            } else
-                return;
-        case SIGINT:
-        case SIGTERM:
-            ss_signal_stop(SS_DEFAULT, &sigint_watcher);
-            ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
-            ss_signal_stop(SS_DEFAULT, &sigchld_watcher);
 
-            ss_unloop(SS_A_ SS_UNLOOP_ALL);
-        }
-    }
+static bool
+plugin_alive()
+{
+    return is_plugin_running() != 0;
 }
 
 int
@@ -230,6 +212,9 @@ main(int argc, char **argv)
     // Bounded heaps for libuv, c-ares and Mbed TLS before any of them runs.
     if (!ss::install_library_heaps())
         FATAL("failed to reserve the library heaps");
+    ss::event::Program program;
+    if (!program.init())
+        FATAL("failed to set up the event loop");
 
     int i, c;
     int pid_flags    = 0;
@@ -842,12 +827,8 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
     signal(SIGPIPE, SIG_IGN);
     signal(SIGABRT, SIG_IGN);
 
-    ss_signal_init(&sigint_watcher, signal_cb, SIGINT);
-    ss_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
-    ss_signal_init(&sigchld_watcher, signal_cb, SIGCHLD);
-    ss_signal_start(SS_DEFAULT, &sigint_watcher);
-    ss_signal_start(SS_DEFAULT, &sigterm_watcher);
-    ss_signal_start(SS_DEFAULT, &sigchld_watcher);
+    if (!program.handle_signals(false, plugin != NULL ? &plugin_alive : NULL))
+        FATAL("failed to watch signals");
 
     // Setup keys
     LOGI("initializing ciphers... %s", method);
@@ -876,14 +857,10 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
             break;
     }
 
-    struct ss_loop *loop = SS_DEFAULT;
-    ss::event::Loop tcp_loop;
+    ss::event::Loop &tcp_loop = program.loop();
     ss::relay::TcpRelay tcp_relay;
     ss::relay::UdpRelay udp_relay;
     bool tcp_running = false;
-    if (!tcp_loop.adopt(ss_native_loop(loop))) {
-        FATAL("failed to set up the event loop");
-    }
     if (mode != TCP_ONLY) {
         ss::relay::UdpConfig udp_config;
         udp_config.kind         = ss::relay::Kind::redir;
@@ -972,7 +949,11 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
     }
 
     ss::heap_seal();
-    ss_run(loop, 0);
+    {
+        int code = program.run();
+        if (code != 0)
+            ret_val = code;
+    }
 
     if (plugin != NULL) {
         stop_plugin();
@@ -983,6 +964,7 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
     while (!tcp_relay.closed() || !udp_relay.closed()) {
         tcp_loop.run_nowait();
     }
+    program.close();
     (void)tcp_running;
 
     if (verbose)

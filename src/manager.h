@@ -27,8 +27,6 @@
 #include "core.h"
 #include "uthash.h"
 
-#include "ss_event.h"
-
 #include "jconf.h"
 
 #include "common.h"
@@ -38,7 +36,6 @@ extern "C" {
 #endif
 
 struct manager_ctx {
-    ss_io io;
     int fd;
     int fast_open;
     int no_delay;

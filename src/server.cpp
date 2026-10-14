@@ -70,12 +70,10 @@ enum datatypes {
 #include "utils.h"
 #include "acl.h"
 #include "plugin.h"
-#include "ss_event.h"
 #include "crypto.h"
 #include "jconf.h"
 #include "common.h"
 #include "ss_windows.h"
-#include "resolv.h"
 
 #ifdef USE_NFCONNTRACK_TOS
 #include <libnetfilter_conntrack/libnetfilter_conntrack.h>
@@ -83,6 +81,7 @@ enum datatypes {
 #endif
 
 #include "core/heap_guard.hpp"
+#include "event/program.hpp"
 #include "relay/tcp.hpp"
 #include "relay/udp.hpp"
 
@@ -113,7 +112,6 @@ enum datatypes {
 
 #endif
 
-static void signal_cb(SS_P_ ss_signal *w, int revents);
 
 int verbose    = 0;
 int reuse_port = 0;
@@ -147,16 +145,11 @@ uint64_t tx               = 0;
 uint64_t rx               = 0;
 
 #ifndef __MINGW32__
-ss_timer stat_update_watcher;
 #endif
 
-static struct ss_signal sigint_watcher;
-static struct ss_signal sigterm_watcher;
 #ifndef __MINGW32__
-static struct ss_signal sigchld_watcher;
 #else
 static struct plugin_watcher_t {
-    ss_io io;
     SOCKET fd;
     uint16_t port;
     int valid;
@@ -165,21 +158,27 @@ static struct plugin_watcher_t {
 
 #ifndef __MINGW32__
 static int setnonblocking(int fd);
-static void stat_resolved(struct sockaddr *address, void *data)
+// Resolves the manager's address when it is given by name.
+static ss::relay::Resolver *stat_resolver = NULL;
+
+static void stat_resolved(const ss::relay::ResolveCallback &cb, const sockaddr *address) noexcept
 {
-    if (!address) return;
-    int fd = ss_socket(address->sa_family, SOCK_DGRAM, 0);
-    if (fd == -1) return;
-    setnonblocking(fd);
-    const char *message = (const char *)data;
-    size_t length = strlen(message) + 1;
-    if (sendto(fd, message, length, 0, address, get_sockaddr_len(address)) != (ssize_t)length)
-        ERROR("stat_sendto");
-    ss_socket_close(fd);
+    char *message = (char *)cb.ctx;
+    if (address) {
+        int fd = ss_socket(address->sa_family, SOCK_DGRAM, 0);
+        if (fd != -1) {
+            setnonblocking(fd);
+            size_t length = strlen(message) + 1;
+            if (sendto(fd, message, length, 0, address, get_sockaddr_len((struct sockaddr *)address)) != (ssize_t)length)
+                ERROR("stat_sendto");
+            ss_socket_close(fd);
+        }
+    }
+    free(message); // heap-ok: one stats datagram every few seconds
 }
 
 static void
-stat_update_cb(SS_P_ ss_timer *watcher, int revents)
+stat_update_cb(void *) noexcept
 {
     struct sockaddr_un svaddr, claddr;
     int sfd = -1;
@@ -238,9 +237,13 @@ stat_update_cb(SS_P_ ss_timer *watcher, int revents)
     } else {
         uint16_t port;
         if (parse_numeric_port(ip_addr.port, &port) == 0) {
-            char *message = strdup(resp);
+            char *message = strdup(resp); // heap-ok: one stats datagram every few seconds
             if (!message) FATAL("out of memory");
-            resolv_start(ip_addr.host, htons(port), stat_resolved, NULL, message);
+            ss::relay::ResolveCallback cb;
+            cb.fn  = &stat_resolved;
+            cb.ctx = message;
+            if (stat_resolver == NULL || !stat_resolver->resolve(ip_addr.host, htons(port), cb))
+                free(message); // heap-ok: see above
         }
         ss_free(ip_addr.host);
         ss_free(ip_addr.port);
@@ -773,36 +776,10 @@ report_failure(ss_socket_t fd, const char *reason)
     report_addr((int)fd, reason);
 }
 
-static void
-signal_cb(SS_P_ ss_signal *w, int revents)
-{
-    if (revents & SS_SIGNAL) {
-        switch (w->signum) {
-#ifndef __MINGW32__
-        case SIGCHLD:
-            if (!is_plugin_running()) {
-                LOGE("plugin service exit unexpectedly");
-                ret_val = -1;
-            } else
-                return;
-#endif
-        case SIGINT:
-        case SIGTERM:
-            ss_signal_stop(SS_DEFAULT, &sigint_watcher);
-            ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
-#ifndef __MINGW32__
-            ss_signal_stop(SS_DEFAULT, &sigchld_watcher);
-#else
-            ss_io_stop(SS_DEFAULT, &plugin_watcher.io);
-#endif
-            ss_unloop(SS_A_ SS_UNLOOP_ALL);
-        }
-    }
-}
 
 #ifdef __MINGW32__
 static void
-plugin_watcher_cb(SS_P_ ss_io *w, int revents)
+plugin_watcher_cb(void *ctx) noexcept
 {
     char buf[1];
     SOCKET fd = ss_accept(plugin_watcher.fd, NULL, NULL);
@@ -812,14 +789,16 @@ plugin_watcher_cb(SS_P_ ss_io *w, int revents)
     recv(fd, buf, 1, 0);
     closesocket(fd);
     LOGE("plugin service exit unexpectedly");
-    ret_val = -1;
-    ss_signal_stop(SS_DEFAULT, &sigint_watcher);
-    ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
-    ss_io_stop(SS_DEFAULT, &plugin_watcher.io);
-    ss_unloop(SS_A_ SS_UNLOOP_ALL);
+    static_cast<ss::event::Program *>(ctx)->stop(-1);
 }
 
 #endif
+
+static bool
+plugin_alive()
+{
+    return is_plugin_running() != 0;
+}
 
 int
 main(int argc, char **argv)
@@ -827,6 +806,9 @@ main(int argc, char **argv)
     // Bounded heaps for libuv, c-ares and Mbed TLS before any of them runs.
     if (!ss::install_library_heaps())
         FATAL("failed to reserve the library heaps");
+    ss::event::Program program;
+    if (!program.init())
+        FATAL("failed to set up the event loop");
 
     int i, c;
     int pid_flags   = 0;
@@ -1465,14 +1447,8 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     signal(SIGABRT, SIG_IGN);
 #endif
 
-    ss_signal_init(&sigint_watcher, signal_cb, SIGINT);
-    ss_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
-    ss_signal_start(SS_DEFAULT, &sigint_watcher);
-    ss_signal_start(SS_DEFAULT, &sigterm_watcher);
-#ifndef __MINGW32__
-    ss_signal_init(&sigchld_watcher, signal_cb, SIGCHLD);
-    ss_signal_start(SS_DEFAULT, &sigchld_watcher);
-#endif
+    if (!program.handle_signals(false, plugin != NULL ? &plugin_alive : NULL))
+        FATAL("failed to watch signals");
 
     // setup keys
     LOGI("initializing ciphers... %s", method);
@@ -1483,11 +1459,8 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         FATAL("failed to set up the AEAD-2022 salt pool");
 
     // initialize ev loop
-    struct ss_loop *loop = SS_DEFAULT;
 
     // setup dns
-    resolv_init(loop, nameservers, ipv6first);
-
     if (nameservers != NULL)
         LOGI("using nameserver: %s", nameservers);
 
@@ -1513,8 +1486,8 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
                     break;
                 }
                 plugin_watcher.fd = fd;
-                ss_io_init(&plugin_watcher.io, plugin_watcher_cb, fd, SS_READ);
-                ss_io_start(SS_DEFAULT, &plugin_watcher.io);
+                if (!program.watch(fd, plugin_watcher_cb, &program))
+                    break;
                 plugin_watcher.valid = 1;
             } while (0);
             if (!plugin_watcher.valid) {
@@ -1550,18 +1523,17 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         }
     }
 
-    // The relays run on the ss_event loop next to the C modules, and share
-    // one resolver for targets given by name.
-    ss::event::Loop tcp_loop;
+    // The relays share one resolver for targets given by name.
+    ss::event::Loop &tcp_loop = program.loop();
     ss::relay::Resolver tcp_resolver;
     ss::relay::TcpRelay tcp_relay;
     ss::relay::UdpRelay udp_relay;
     bool tcp_running = false;
-    if (!tcp_loop.adopt(ss_native_loop(loop))
-        || !tcp_resolver.init(tcp_loop, nameservers, ipv6first != 0,
+    if (!tcp_resolver.init(tcp_loop, nameservers, ipv6first != 0,
                            (max_connections > 0 ? max_connections : DEFAULT_MAX_CONNECTIONS) + 64)) {
         FATAL("failed to set up the resolver");
     }
+    stat_resolver = &tcp_resolver;
     if (mode != UDP_ONLY) {
         ss::relay::TcpConfig tcp_config;
         tcp_config.kind            = ss::relay::Kind::server;
@@ -1689,8 +1661,8 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 
 #ifndef __MINGW32__
     if (manager_addr != NULL) {
-        ss_timer_init(&stat_update_watcher, stat_update_cb, UPDATE_INTERVAL, UPDATE_INTERVAL);
-        ss_timer_start(SS_DEFAULT, &stat_update_watcher);
+        if (!program.every(UPDATE_INTERVAL * 1000, stat_update_cb, NULL))
+            FATAL("failed to start the traffic statistics timer");
     }
 #endif
 
@@ -1707,25 +1679,21 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 
     // start ev loop
     ss::heap_seal();
-    ss_run(loop, 0);
+    {
+        int code = program.run();
+        if (code != 0)
+            ret_val = code;
+    }
 
     if (verbose) {
         LOGI("closed gracefully");
     }
-
-#ifndef __MINGW32__
-    if (manager_addr != NULL) {
-        ss_timer_stop(SS_DEFAULT, &stat_update_watcher);
-    }
-#endif
 
     if (plugin != NULL) {
         stop_plugin();
     }
 
     // Clean up
-
-    resolv_shutdown(loop);
 
     {
         static bool resolver_closed;
@@ -1738,12 +1706,10 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         }
     }
     (void)tcp_running;
-    ss_loop_destroy(loop);
+    stat_resolver = NULL;
+    program.close();
 
 #ifdef __MINGW32__
-    if (plugin_watcher.valid) {
-        closesocket(plugin_watcher.fd);
-    }
 
     winsock_cleanup();
 #endif

@@ -53,19 +53,18 @@
 #include "core.h"
 
 #include "netutils.h"
-#include "resolv.h"
 #include "ssurl.h"
 #include "utils.h"
 #include "socks5.h"
 #include "acl.h"
 #include "plugin.h"
-#include "ss_event.h"
 #include "crypto.h"
 #include "jconf.h"
 #include "common.h"
 #include "ss_windows.h"
 
 #include "core/heap_guard.hpp"
+#include "event/program.hpp"
 #include "relay/tcp.hpp"
 #include "relay/udp.hpp"
 
@@ -118,15 +117,10 @@ static int printable_salt = 0;
 static int udp_fd    = 0;
 static int ret_val   = 0;
 
-static struct ss_signal sigint_watcher;
-static struct ss_signal sigterm_watcher;
 #ifndef __MINGW32__
-static struct ss_signal sigchld_watcher;
-static struct ss_signal sigusr1_watcher;
 #else
 #ifndef LIB_ONLY
 static struct plugin_watcher_t {
-    ss_io io;
     SOCKET fd;
     uint16_t port;
     int valid;
@@ -140,9 +134,7 @@ static int nofile = 0;
 #endif
 #endif
 
-static void signal_cb(SS_P_ ss_signal *w, int revents);
 #if defined(__MINGW32__) && !defined(LIB_ONLY)
-static void plugin_watcher_cb(SS_P_ ss_io *w, int revents);
 #endif
 
 static int create_and_bind(const char *addr, const char *port);
@@ -278,7 +270,7 @@ stat_update_cb()
 namespace {
 
 struct Relays {
-    ss::event::Loop loop;
+    ss::event::Loop *loop = NULL;
     ss::relay::Method method;
     ss::relay::Resolver resolver;
     ss::relay::TcpRelay tcp;
@@ -287,11 +279,9 @@ struct Relays {
     bool tcp_on    = false;
     bool udp_on    = false;
 
-    bool init(struct ss_loop *ss_loop, const char *cipher, const char *pass, const char *key)
+    bool init(ss::event::Loop &event_loop, const char *cipher, const char *pass, const char *key)
     {
-        if (!loop.adopt(ss_native_loop(ss_loop))) {
-            return false;
-        }
+        loop = &event_loop;
         LOGI("initializing ciphers... %s", cipher);
         if (!method.init(cipher, pass, key, ss::crypto::Role::client)) {
             LOGE("failed to initialize ciphers");
@@ -306,12 +296,12 @@ struct Relays {
             config.acl_hooks.match_host       = &acl_match_host;
             config.acl_hooks.mode             = &get_acl_mode;
             config.acl_hooks.outbound_blocked = &outbound_block_match_host;
-            if (!resolver.init(loop, NULL, ipv6first != 0, config.max_connections)) {
+            if (!resolver.init(*loop, NULL, ipv6first != 0, config.max_connections)) {
                 return false;
             }
             resolving = true;
         }
-        if (!tcp.init(loop, method, config, resolving ? &resolver : NULL) || !tcp.listen(listenfd)) {
+        if (!tcp.init(*loop, method, config, resolving ? &resolver : NULL) || !tcp.listen(listenfd)) {
             return false;
         }
         tcp_on = true;
@@ -337,7 +327,7 @@ struct Relays {
         config.on_traffic = &stat_update_cb;
 #endif
         auto fd = ss::relay::open_udp_listener(host, port, false, reuse_port != 0);
-        if (!fd || !udp.init(loop, method, config, NULL)) {
+        if (!fd || !udp.init(*loop, method, config, NULL)) {
             return -1;
         }
         if (!udp.listen(*fd)) {
@@ -362,7 +352,7 @@ struct Relays {
             resolver.shutdown(ss::CloseCompletion([](void *, uint32_t) { resolver_closed = true; }, NULL, 0));
         }
         while ((tcp_on && !tcp.closed()) || (udp_on && !udp.closed()) || !resolver_closed) {
-            loop.run_nowait();
+            loop->run_nowait();
         }
         tcp_on = udp_on = resolving = false;
     }
@@ -395,40 +385,10 @@ fill_tcp_config(ss::relay::TcpConfig &config, const struct sockaddr_storage *rem
 
 } // namespace
 
-static void
-signal_cb(SS_P_ ss_signal *w, int revents)
-{
-    if (revents & SS_SIGNAL) {
-        switch (w->signum) {
-#ifndef __MINGW32__
-        case SIGCHLD:
-            if (!is_plugin_running()) {
-                LOGE("plugin service exit unexpectedly");
-                ret_val = -1;
-            } else
-                return;
-        case SIGUSR1:
-#endif
-        case SIGINT:
-        case SIGTERM:
-            ss_signal_stop(SS_DEFAULT, &sigint_watcher);
-            ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
-#ifndef __MINGW32__
-            ss_signal_stop(SS_DEFAULT, &sigchld_watcher);
-            ss_signal_stop(SS_DEFAULT, &sigusr1_watcher);
-#else
-#ifndef LIB_ONLY
-            ss_io_stop(SS_DEFAULT, &plugin_watcher.io);
-#endif
-#endif
-            ss_unloop(SS_A_ SS_UNLOOP_ALL);
-        }
-    }
-}
 
 #if defined(__MINGW32__) && !defined(LIB_ONLY)
 static void
-plugin_watcher_cb(SS_P_ ss_io *w, int revents)
+plugin_watcher_cb(void *ctx) noexcept
 {
     char buf[1];
     SOCKET fd = ss_accept(plugin_watcher.fd, NULL, NULL);
@@ -438,22 +398,27 @@ plugin_watcher_cb(SS_P_ ss_io *w, int revents)
     recv(fd, buf, 1, 0);
     closesocket(fd);
     LOGE("plugin service exit unexpectedly");
-    ret_val = -1;
-    ss_signal_stop(SS_DEFAULT, &sigint_watcher);
-    ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
-    ss_io_stop(SS_DEFAULT, &plugin_watcher.io);
-    ss_unloop(SS_A_ SS_UNLOOP_ALL);
+    static_cast<ss::event::Program *>(ctx)->stop(-1);
 }
 
 #endif
 
 #ifndef LIB_ONLY
+static bool
+plugin_alive()
+{
+    return is_plugin_running() != 0;
+}
+
 int
 main(int argc, char **argv)
 {
     // Bounded heaps for libuv, c-ares and Mbed TLS before any of them runs.
     if (!ss::install_library_heaps())
         FATAL("failed to reserve the library heaps");
+    ss::event::Program program;
+    if (!program.init())
+        FATAL("failed to set up the event loop");
 
     int i, c;
     int pid_flags    = 0;
@@ -1163,8 +1128,8 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
                     break;
                 }
                 plugin_watcher.fd = fd;
-                ss_io_init(&plugin_watcher.io, plugin_watcher_cb, fd, SS_READ);
-                ss_io_start(SS_DEFAULT, &plugin_watcher.io);
+                if (!program.watch(fd, plugin_watcher_cb, &program))
+                    break;
                 plugin_watcher.valid = 1;
             } while (0);
             if (!plugin_watcher.valid) {
@@ -1206,7 +1171,7 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 
     // Setup keys
     Relays relays;
-    if (!relays.init(SS_DEFAULT, method, password, key))
+    if (!relays.init(program.loop(), method, password, key))
         FATAL("failed to initialize ciphers");
 
     // Setup proxy context
@@ -1233,21 +1198,14 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
     fill_tcp_config(tcp_config, remote_storage, remote_count, timeout_secs, mptcp, iface);
 
     // Setup signal handler
-    ss_signal_init(&sigint_watcher, signal_cb, SIGINT);
-    ss_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
-    ss_signal_start(SS_DEFAULT, &sigint_watcher);
-    ss_signal_start(SS_DEFAULT, &sigterm_watcher);
-#ifndef __MINGW32__
-    ss_signal_init(&sigchld_watcher, signal_cb, SIGCHLD);
-    ss_signal_start(SS_DEFAULT, &sigchld_watcher);
-#endif
+    if (!program.handle_signals(false, plugin != NULL ? &plugin_alive : NULL))
+        FATAL("failed to watch signals");
 
     if (ss_is_ipv6addr(local_addr))
         LOGI("listening at [%s]:%s", local_addr, local_port);
     else
         LOGI("listening at %s:%s", local_addr, local_port);
 
-    struct ss_loop *loop = SS_DEFAULT;
 
     if (mode != UDP_ONLY) {
         // Setup socket
@@ -1303,7 +1261,11 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 
     // Enter the loop
     ss::heap_seal();
-    ss_run(loop, 0);
+    {
+        int code = program.run();
+        if (code != 0)
+            ret_val = code;
+    }
 
     if (verbose) {
         LOGI("closed gracefully");
@@ -1315,12 +1277,9 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
     }
 
     relays.stop();
-    ss_loop_destroy(loop);
+    program.close();
 
 #ifdef __MINGW32__
-    if (plugin_watcher.valid) {
-        closesocket(plugin_watcher.fd);
-    }
 
     winsock_cleanup();
 #endif
@@ -1349,17 +1308,15 @@ struct ss_local_handle {
 
 namespace {
 
-// The running server's stop signal. ss_local_stop() and the server thread
-// take the lock around it, so a stop never wakes a loop that is gone.
+// The running server's loop. ss_local_stop() and the server thread take
+// the lock around it, so a stop never wakes a loop that is gone.
 uv_mutex_t control_lock;
 uv_once_t control_once = UV_ONCE_INIT;
-uv_async_t *stop_signal         = NULL;
+ss::event::Program *running_program = NULL;
 ss_local_handle *running_handle = NULL;
 bool server_busy                = false;
 
 void control_init(void) { uv_mutex_init(&control_lock); }
-
-void on_stop_signal(uv_async_t *) { ss_unloop(SS_DEFAULT, SS_UNLOOP_ALL); }
 
 char *copy_string(const char *s)
 {
@@ -1440,8 +1397,8 @@ ss_local_stop(ss_local_handle *handle)
     uv_once(&control_once, control_init);
     uv_mutex_lock(&control_lock);
     handle->stop_requested = true;
-    if (running_handle == handle && stop_signal != NULL) {
-        uv_async_send(stop_signal);
+    if (running_handle == handle && running_program != NULL) {
+        running_program->request_stop();
     }
     uv_mutex_unlock(&control_lock);
 }
@@ -1517,18 +1474,13 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
     signal(SIGABRT, SIG_IGN);
 #endif
 
-    ss_signal_init(&sigint_watcher, signal_cb, SIGINT);
-    ss_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
-    ss_signal_start(SS_DEFAULT, &sigint_watcher);
-    ss_signal_start(SS_DEFAULT, &sigterm_watcher);
-#ifndef __MINGW32__
-    ss_signal_init(&sigusr1_watcher, signal_cb, SIGUSR1);
-    ss_signal_start(SS_DEFAULT, &sigusr1_watcher);
-#endif
+    ss::event::Program program;
+    if (!program.init() || !program.handle_signals(true) || !program.allow_remote_stop())
+        FATAL("failed to set up the event loop");
 
     // Setup keys
     Relays relays;
-    if (!relays.init(SS_DEFAULT, method, password, NULL))
+    if (!relays.init(program.loop(), method, password, NULL))
         FATAL("failed to init ciphers");
 
     struct sockaddr_storage storage;
@@ -1538,7 +1490,6 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
     }
 
     // Setup proxy context
-    struct ss_loop *loop = SS_DEFAULT;
     ss::relay::TcpConfig tcp_config;
     fill_tcp_config(tcp_config, &storage, 1, timeout, mptcp, NULL);
     int listen_fd = -1; // stays -1 in UDP_ONLY mode but is still passed to the callback below
@@ -1580,23 +1531,23 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
         callback(listen_fd, udp_fd, udata);
     }
 
-    // ss_local_stop() wakes the loop through this handle.
-    uv_async_t stop_async;
-    uv_async_init(ss_native_loop(loop), &stop_async, on_stop_signal);
+    // ss_local_stop() wakes this loop from another thread.
     uv_once(&control_once, control_init);
     uv_mutex_lock(&control_lock);
-    bool stop_now = running_handle != NULL && running_handle->stop_requested;
-    stop_signal   = &stop_async;
+    bool stop_now   = running_handle != NULL && running_handle->stop_requested;
+    running_program = &program;
     uv_mutex_unlock(&control_lock);
 
     // Enter the loop
-    if (!stop_now)
-        ss_run(loop, 0);
+    if (!stop_now) {
+        int code = program.run();
+        if (code != 0)
+            ret_val = code;
+    }
 
     uv_mutex_lock(&control_lock);
-    stop_signal = NULL;
+    running_program = NULL;
     uv_mutex_unlock(&control_lock);
-    uv_close((uv_handle_t *)&stop_async, NULL);
 
     if (verbose) {
         LOGI("closed gracefully");
@@ -1604,7 +1555,7 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
 
     // Clean up
     relays.stop();
-    ss_loop_destroy(loop);
+    program.close();
 
 #ifdef __MINGW32__
     winsock_cleanup();

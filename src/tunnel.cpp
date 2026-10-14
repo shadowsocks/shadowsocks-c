@@ -52,13 +52,13 @@
 #include "netutils.h"
 #include "utils.h"
 #include "plugin.h"
-#include "ss_event.h"
 #include "crypto.h"
 #include "jconf.h"
 #include "common.h"
 #include "ss_windows.h"
 
 #include "core/heap_guard.hpp"
+#include "event/program.hpp"
 #include "relay/tcp.hpp"
 #include "relay/udp.hpp"
 
@@ -118,13 +118,9 @@ static int max_udp_sessions = 0;
 int fast_open       = 0;
 static int ret_val  = 0;
 
-static struct ss_signal sigint_watcher;
-static struct ss_signal sigterm_watcher;
 #ifndef __MINGW32__
-static struct ss_signal sigchld_watcher;
 #else
 static struct plugin_watcher_t {
-    ss_io io;
     SOCKET fd;
     uint16_t port;
     int valid;
@@ -198,36 +194,10 @@ create_and_bind(const char *addr, const char *port)
     return listen_sock;
 }
 
-static void
-signal_cb(SS_P_ ss_signal *w, int revents)
-{
-    if (revents & SS_SIGNAL) {
-        switch (w->signum) {
-#ifndef __MINGW32__
-        case SIGCHLD:
-            if (!is_plugin_running()) {
-                LOGE("plugin service exit unexpectedly");
-                ret_val = -1;
-            } else
-                return;
-#endif
-        case SIGINT:
-        case SIGTERM:
-            ss_signal_stop(SS_DEFAULT, &sigint_watcher);
-            ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
-#ifndef __MINGW32__
-            ss_signal_stop(SS_DEFAULT, &sigchld_watcher);
-#else
-            ss_io_stop(SS_DEFAULT, &plugin_watcher.io);
-#endif
-            ss_unloop(SS_A_ SS_UNLOOP_ALL);
-        }
-    }
-}
 
 #ifdef __MINGW32__
 static void
-plugin_watcher_cb(SS_P_ ss_io *w, int revents)
+plugin_watcher_cb(void *ctx) noexcept
 {
     char buf[1];
     SOCKET fd = ss_accept(plugin_watcher.fd, NULL, NULL);
@@ -237,14 +207,16 @@ plugin_watcher_cb(SS_P_ ss_io *w, int revents)
     recv(fd, buf, 1, 0);
     closesocket(fd);
     LOGE("plugin service exit unexpectedly");
-    ret_val = -1;
-    ss_signal_stop(SS_DEFAULT, &sigint_watcher);
-    ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
-    ss_io_stop(SS_DEFAULT, &plugin_watcher.io);
-    ss_unloop(SS_A_ SS_UNLOOP_ALL);
+    static_cast<ss::event::Program *>(ctx)->stop(-1);
 }
 
 #endif
+
+static bool
+plugin_alive()
+{
+    return is_plugin_running() != 0;
+}
 
 int
 main(int argc, char **argv)
@@ -252,6 +224,9 @@ main(int argc, char **argv)
     // Bounded heaps for libuv, c-ares and Mbed TLS before any of them runs.
     if (!ss::install_library_heaps())
         FATAL("failed to reserve the library heaps");
+    ss::event::Program program;
+    if (!program.init())
+        FATAL("failed to set up the event loop");
 
     int i, c;
     int pid_flags    = 0;
@@ -907,8 +882,8 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
                     break;
                 }
                 plugin_watcher.fd = fd;
-                ss_io_init(&plugin_watcher.io, plugin_watcher_cb, fd, SS_READ);
-                ss_io_start(SS_DEFAULT, &plugin_watcher.io);
+                if (!program.watch(fd, plugin_watcher_cb, &program))
+                    break;
                 plugin_watcher.valid = 1;
             } while (0);
             if (!plugin_watcher.valid) {
@@ -948,14 +923,8 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     signal(SIGABRT, SIG_IGN);
 #endif
 
-    ss_signal_init(&sigint_watcher, signal_cb, SIGINT);
-    ss_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
-    ss_signal_start(SS_DEFAULT, &sigint_watcher);
-    ss_signal_start(SS_DEFAULT, &sigterm_watcher);
-#ifndef __MINGW32__
-    ss_signal_init(&sigchld_watcher, signal_cb, SIGCHLD);
-    ss_signal_start(SS_DEFAULT, &sigchld_watcher);
-#endif
+    if (!program.handle_signals(false, plugin != NULL ? &plugin_alive : NULL))
+        FATAL("failed to watch signals");
 
     // Setup keys
     LOGI("initializing ciphers... %s", method);
@@ -1011,13 +980,9 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
 
     LOGI("listening at %s:%s", local_addr, local_port);
 
-    struct ss_loop *loop = SS_DEFAULT;
-    ss::event::Loop tcp_loop;
+    ss::event::Loop &tcp_loop = program.loop();
     ss::relay::TcpRelay tcp_relay;
     ss::relay::UdpRelay udp_relay;
-    if (!tcp_loop.adopt(ss_native_loop(loop))) {
-        FATAL("failed to set up the event loop");
-    }
 
     if (mode != UDP_ONLY) {
         if (!tcp_relay.init(tcp_loop, relay_method, tcp_config, NULL)) {
@@ -1079,7 +1044,11 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
 #endif
 
     ss::heap_seal();
-    ss_run(loop, 0);
+    {
+        int code = program.run();
+        if (code != 0)
+            ret_val = code;
+    }
 
     if (plugin != NULL) {
         stop_plugin();
@@ -1090,11 +1059,9 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     while (!tcp_relay.closed() || !udp_relay.closed()) {
         tcp_loop.run_nowait();
     }
+    program.close();
 
 #ifdef __MINGW32__
-    if (plugin_watcher.valid) {
-        closesocket(plugin_watcher.fd);
-    }
 
     winsock_cleanup();
 #endif

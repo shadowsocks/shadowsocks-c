@@ -64,6 +64,8 @@
 #include "netutils.h"
 #include "manager.h"
 
+#include "event/program.hpp"
+
 #ifndef BUF_SIZE
 #define BUF_SIZE 65535
 #endif
@@ -953,9 +955,9 @@ update_stat(char *port, uint64_t traffic)
 }
 
 static void
-manager_recv_cb(SS_P_ ss_io *w, int revents)
+manager_recv_cb(void *ctx) noexcept
 {
-    struct manager_ctx *manager = (struct manager_ctx *)w;
+    struct manager_ctx *manager = (struct manager_ctx *)ctx;
     socklen_t len;
     ssize_t r;
     struct sockaddr_un claddr;
@@ -1146,17 +1148,6 @@ ERROR_MSG:
     }
 }
 
-static void
-signal_cb(SS_P_ ss_signal *w, int revents)
-{
-    if (revents & SS_SIGNAL) {
-        switch (w->signum) {
-        case SIGINT:
-        case SIGTERM:
-            ss_unloop(SS_A_ SS_UNLOOP_ALL);
-        }
-    }
-}
 
 int
 create_server_socket(const char *host, const char *port)
@@ -1714,12 +1705,9 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     signal(SIGCHLD, SIG_IGN);
     signal(SIGABRT, SIG_IGN);
 
-    struct ss_signal sigint_watcher;
-    struct ss_signal sigterm_watcher;
-    ss_signal_init(&sigint_watcher, signal_cb, SIGINT);
-    ss_signal_init(&sigterm_watcher, signal_cb, SIGTERM);
-    ss_signal_start(SS_DEFAULT, &sigint_watcher);
-    ss_signal_start(SS_DEFAULT, &sigterm_watcher);
+    ss::event::Program program;
+    if (!program.init() || !program.handle_signals(false))
+        FATAL("failed to set up the event loop");
 
     struct manager_ctx manager;
     memset(&manager, 0, sizeof(struct manager_ctx));
@@ -1747,9 +1735,6 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 #ifdef HAVE_SETRLIMIT
     manager.nofile = nofile;
 #endif
-
-    // initialize ev loop
-    struct ss_loop *loop = SS_DEFAULT;
 
     // Clean up all existed processes
     DIR *dp;
@@ -1836,11 +1821,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     }
 
     manager.fd = sfd;
-    ss_io_init(&manager.io, manager_recv_cb, manager.fd, SS_READ);
-    ss_io_start(loop, &manager.io);
+    if (!program.watch(manager.fd, manager_recv_cb, &manager))
+        FATAL("failed to watch the control socket");
 
     // start ev loop
-    ss_run(loop, 0);
+    (void)program.run();
 
     if (verbose) {
         LOGI("closed gracefully");
@@ -1855,8 +1840,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         ss_free(server);
     }
 
-    ss_signal_stop(SS_DEFAULT, &sigint_watcher);
-    ss_signal_stop(SS_DEFAULT, &sigterm_watcher);
+    program.close();
     ss_free(working_dir);
     free_addr(&ip_addr);
 
