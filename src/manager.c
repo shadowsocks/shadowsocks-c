@@ -71,7 +71,7 @@
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 int verbose          = 0;
-char *executable     = "ss-server";
+char *executable     = (char *)"ss-server";
 char *working_dir    = NULL;
 size_t working_dir_size = 0;
 
@@ -306,7 +306,7 @@ build_config(char *prefix, struct manager_ctx *manager, struct server *server)
     char *path    = NULL;
     int path_size = strlen(prefix) + strlen(server->port) + 20;
 
-    path = ss_malloc(path_size);
+    path = (char *)ss_malloc(path_size);
     snprintf(path, path_size, "%s/.shadowsocks_%s.conf", prefix, server->port);
     FILE *f = fopen(path, "w+");
     if (f == NULL) {
@@ -391,30 +391,30 @@ start_server_process(struct manager_ctx *manager, struct server *server)
 
     int pid_path_size = strlen(working_dir) + strlen(server->port) + 20;
     int conf_path_size = strlen(working_dir) + strlen(server->port) + 20;
-    pid_path           = ss_malloc(pid_path_size);
-    conf_path          = ss_malloc(conf_path_size);
+    pid_path           = (char *)ss_malloc(pid_path_size);
+    conf_path          = (char *)ss_malloc(conf_path_size);
     snprintf(pid_path, pid_path_size, "%s/.shadowsocks_%d.pid", working_dir, port);
     snprintf(conf_path, conf_path_size, "%s/.shadowsocks_%d.conf", working_dir, port);
 
     argv[0] = NULL;
 
     if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), executable) == -1 ||
-        add_server_arg(argv, &argc, ARRAY_SIZE(argv), "--manager-address") == -1 ||
+        add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--manager-address") == -1 ||
         add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->manager_address) == -1 ||
-        add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-f") == -1 ||
+        add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-f") == -1 ||
         add_server_arg(argv, &argc, ARRAY_SIZE(argv), pid_path) == -1 ||
-        add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-c") == -1 ||
+        add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-c") == -1 ||
         add_server_arg(argv, &argc, ARRAY_SIZE(argv), conf_path) == -1) {
         goto ERROR;
     }
 
     if (manager->acl != NULL &&
-        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "--acl") == -1 ||
+        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--acl") == -1 ||
          add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->acl) == -1)) {
         goto ERROR;
     }
     if (manager->timeout != NULL &&
-        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-t") == -1 ||
+        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-t") == -1 ||
          add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->timeout) == -1)) {
         goto ERROR;
     }
@@ -422,76 +422,76 @@ start_server_process(struct manager_ctx *manager, struct server *server)
 #ifdef HAVE_SETRLIMIT
     if (manager->nofile) {
         snprintf(nofile, sizeof(nofile), "%d", manager->nofile);
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-n") == -1 ||
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-n") == -1 ||
             add_server_arg(argv, &argc, ARRAY_SIZE(argv), nofile) == -1) {
             goto ERROR;
         }
     }
 #endif
     if (manager->user != NULL &&
-        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-a") == -1 ||
+        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-a") == -1 ||
          add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->user) == -1)) {
         goto ERROR;
     }
     if (manager->verbose) {
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-v") == -1) {
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-v") == -1) {
             goto ERROR;
         }
     }
     if (server->mode == NULL && manager->mode == UDP_ONLY) {
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-U") == -1) {
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-U") == -1) {
             goto ERROR;
         }
     }
     if (server->mode == NULL && manager->mode == TCP_AND_UDP) {
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-u") == -1) {
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-u") == -1) {
             goto ERROR;
         }
     }
     if (manager->iface &&
-        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-i") == -1 ||
+        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-i") == -1 ||
          add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->iface) == -1)) {
         goto ERROR;
     }
     if (server->fast_open[0] == 0 && manager->fast_open) {
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "--fast-open") == -1) {
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--fast-open") == -1) {
             goto ERROR;
         }
     }
     if (server->no_delay[0] == 0 && manager->no_delay) {
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "--no-delay") == -1) {
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--no-delay") == -1) {
             goto ERROR;
         }
     }
     if (manager->ipv6first) {
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-6") == -1) {
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-6") == -1) {
             goto ERROR;
         }
     }
     if (manager->mtu) {
         snprintf(mtu, sizeof(mtu), "%d", manager->mtu);
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "--mtu") == -1 ||
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--mtu") == -1 ||
             add_server_arg(argv, &argc, ARRAY_SIZE(argv), mtu) == -1) {
             goto ERROR;
         }
     }
     if (server->plugin == NULL && manager->plugin &&
-        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "--plugin") == -1 ||
+        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--plugin") == -1 ||
          add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->plugin) == -1)) {
         goto ERROR;
     }
     if (server->plugin_opts == NULL && manager->plugin_opts &&
-        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "--plugin-opts") == -1 ||
+        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--plugin-opts") == -1 ||
          add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->plugin_opts) == -1)) {
         goto ERROR;
     }
     if (manager->nameservers &&
-        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-d") == -1 ||
+        (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-d") == -1 ||
          add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->nameservers) == -1)) {
         goto ERROR;
     }
     for (int i = 0; i < manager->host_num; i++) {
-        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), "-s") == -1 ||
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-s") == -1 ||
             add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->hosts[i]) == -1) {
             goto ERROR;
         }
@@ -506,7 +506,8 @@ start_server_process(struct manager_ctx *manager, struct server *server)
         goto ERROR;
     }
 
-    pid_t pid = fork();
+    pid_t pid;
+    pid = fork();
     if (pid == -1) {
         ERROR("fork");
         goto ERROR;
@@ -599,7 +600,7 @@ get_server(char *buf, int len)
         return NULL;
     }
 
-    struct server *server = ss_malloc(sizeof(struct server));
+    struct server *server = (struct server *)ss_malloc(sizeof(struct server));
     memset(server, 0, sizeof(struct server));
     int valid = 1;
     if (obj->type == json_object) {
@@ -883,7 +884,7 @@ kill_server(char *prefix, char *pid_file)
 {
     char *path = NULL;
     int path_size = strlen(prefix) + strlen(pid_file) + 2;
-    path = ss_malloc(path_size);
+    path = (char *)ss_malloc(path_size);
     snprintf(path, path_size, "%s/%s", prefix, pid_file);
     FILE *f = fopen(path, "r");
     if (f == NULL) {
@@ -904,7 +905,7 @@ stop_server(char *prefix, char *port)
 {
     char *path = NULL;
     int path_size = strlen(prefix) + strlen(port) + 20;
-    path = ss_malloc(path_size);
+    path = (char *)ss_malloc(path_size);
     snprintf(path, path_size, "%s/.shadowsocks_%s.pid", prefix, port);
     FILE *f = fopen(path, "r");
     if (f == NULL) {
@@ -1001,12 +1002,12 @@ manager_recv_cb(SS_P_ ss_io *w, int revents)
         int msg_len;
 
         if (ret == -1) {
-            msg     = "port is not available";
+            msg     = (char *)"port is not available";
             msg_len = 21;
             destroy_server(server);
             ss_free(server);
         } else {
-            msg     = "ok";
+            msg     = (char *)"ok";
             msg_len = 2;
         }
 
@@ -1623,15 +1624,15 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     }
 
     if (server_num == 0) {
-        server_host[server_num++] = "0.0.0.0";
+        server_host[server_num++] = (char *)"0.0.0.0";
     }
 
     if (method == NULL) {
-        method = "table";
+        method = (char *)"table";
     }
 
     if (timeout == NULL) {
-        timeout = "60";
+        timeout = (char *)"60";
     }
     if (ss_parse_int(timeout, 1, INT_MAX, &timeout_secs) == -1) {
         FATAL("invalid timeout");
@@ -1678,15 +1679,15 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         // If home dir is still not defined or set to nologin/nonexistent, fall back to /tmp
         if (workdir == NULL || strlen(workdir) == 0 || strstr(workdir, "nologin") || 
             strstr(workdir, "nonexistent") || strcmp(workdir, "/") == 0) {
-            workdir = "/tmp";
+            workdir = (char *)"/tmp";
         }
 
         working_dir_size = strlen(workdir) + 15;
-        working_dir      = ss_malloc(working_dir_size);
+        working_dir      = (char *)ss_malloc(working_dir_size);
         snprintf(working_dir, working_dir_size, "%s/.shadowsocks", workdir);
     } else {
         working_dir_size = strlen(workdir) + 2;
-        working_dir      = ss_malloc(working_dir_size);
+        working_dir      = (char *)ss_malloc(working_dir_size);
         snprintf(working_dir, working_dir_size, "%s", workdir);
     }
     if (working_dir == NULL) {
@@ -1703,7 +1704,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 
     if (manager_address == NULL) {
         size_t manager_address_size = strlen(workdir) + 20;
-        manager_address = ss_malloc(manager_address_size);
+        manager_address = (char *)ss_malloc(manager_address_size);
         snprintf(manager_address, manager_address_size, "%s/.ss-manager.socks", workdir);
         LOGI("using the default manager address: %s", manager_address);
     }
@@ -1773,7 +1774,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 
     if (conf != NULL) {
         for (i = 0; i < conf->port_password_num; i++) {
-            struct server *server = ss_malloc(sizeof(struct server));
+            struct server *server = (struct server *)ss_malloc(sizeof(struct server));
             memset(server, 0, sizeof(struct server));
             if (copy_port(server->port, sizeof(server->port),
                           conf->port_password[i].port,

@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 struct poll_state {
     uv_poll_t handle;
@@ -60,7 +61,7 @@ const char *ss_backend_name(void)
 struct ss_loop *ss_loop_new(unsigned flags)
 {
     (void)flags;
-    struct ss_loop *loop = allocate(sizeof(*loop));
+    struct ss_loop *loop = (struct ss_loop *)allocate(sizeof(*loop));
     if (uv_loop_init(&loop->native)) { free(loop); return NULL; }
     return loop;
 }
@@ -112,10 +113,13 @@ static void polled(uv_poll_t *handle, int status, int events)
     size_t count = 0;
     for (ss_io *w = state->watchers; w; w = w->next) count++;
     struct pending local[8];
-    struct pending *pending = count > 8 ? allocate(count * sizeof(*pending)) : local;
+    struct pending *pending = count > 8 ? (struct pending *)allocate(count * sizeof(*pending)) : local;
     size_t n = 0;
-    for (ss_io *w = state->watchers; w; w = w->next)
-        pending[n++] = (struct pending){w, w->generation};
+    for (ss_io *w = state->watchers; w; w = w->next) {
+        pending[n].watcher    = w;
+        pending[n].generation = w->generation;
+        n++;
+    }
     /* A callback can stop/free itself or another watcher, or reuse its memory.
      * Revalidate both membership and generation before dereferencing it. */
     for (size_t i = 0; i < count; i++) {
@@ -140,7 +144,10 @@ static void update_poll(struct poll_state *state)
 }
 void ss_io_init(ss_io *w, void (*cb)(struct ss_loop *, ss_io *, int), int fd, int events)
 {
-    *w = (ss_io){.fd = fd, .events = events, .cb = cb};
+    memset(w, 0, sizeof(*w));
+    w->fd     = fd;
+    w->events = events;
+    w->cb     = cb;
 }
 void ss_io_set(ss_io *w, int fd, int events)
 {
@@ -153,7 +160,7 @@ void ss_io_start(struct ss_loop *loop, ss_io *w)
     struct poll_state *state;
     HASH_FIND_INT(loop->polls, &w->fd, state);
     if (!state) {
-        state = allocate(sizeof(*state));
+        state = (struct poll_state *)allocate(sizeof(*state));
         state->fd = w->fd; state->loop = loop;
 #ifdef _WIN32
         checked(uv_poll_init_socket(&loop->native, &state->handle, (SOCKET)(unsigned int)w->fd));
@@ -171,7 +178,7 @@ void ss_io_start(struct ss_loop *loop, ss_io *w)
 }
 void ss_io_stop(struct ss_loop *loop, ss_io *w)
 {
-    struct poll_state *state = w->backend;
+    struct poll_state *state = (struct poll_state *)w->backend;
     if (!state) return;
     assert(state->loop == loop);
     ss_io **item = &state->watchers;
@@ -198,7 +205,10 @@ static void timed(uv_timer_t *handle)
 }
 void ss_timer_init(ss_timer *w, void (*cb)(struct ss_loop *, ss_timer *, int), double after, double repeat)
 {
-    *w = (ss_timer){.after = after, .repeat = repeat, .cb = cb};
+    memset(w, 0, sizeof(*w));
+    w->after  = after;
+    w->repeat = repeat;
+    w->cb     = cb;
 }
 void ss_timer_set(ss_timer *w, double after, double repeat)
 {
@@ -207,7 +217,7 @@ void ss_timer_set(ss_timer *w, double after, double repeat)
 void ss_timer_start(struct ss_loop *loop, ss_timer *w)
 {
     if (w->backend) return;
-    struct timer_state *state = allocate(sizeof(*state));
+    struct timer_state *state = (struct timer_state *)allocate(sizeof(*state));
     state->loop = loop; state->watcher = w;
     checked(uv_timer_init(&loop->native, &state->handle));
     w->backend = state;
@@ -217,7 +227,7 @@ void ss_timer_start(struct ss_loop *loop, ss_timer *w)
 void ss_timer_stop(struct ss_loop *loop, ss_timer *w)
 {
     (void)loop;
-    struct timer_state *state = w->backend;
+    struct timer_state *state = (struct timer_state *)w->backend;
     if (!state) return;
     w->backend = NULL;
     checked(uv_timer_stop(&state->handle));
@@ -240,7 +250,9 @@ static void signaled(uv_signal_t *handle, int signum)
 }
 void ss_signal_init(ss_signal *w, void (*cb)(struct ss_loop *, ss_signal *, int), int signum)
 {
-    *w = (ss_signal){.signum = signum, .cb = cb};
+    memset(w, 0, sizeof(*w));
+    w->signum = signum;
+    w->cb     = cb;
 }
 void ss_signal_start(struct ss_loop *loop, ss_signal *w)
 {
@@ -249,7 +261,7 @@ void ss_signal_start(struct ss_loop *loop, ss_signal *w)
     /* Windows has no SIGTERM delivery; process termination is an OS operation. */
     if (w->signum == SIGTERM) return;
 #endif
-    struct signal_state *state = allocate(sizeof(*state));
+    struct signal_state *state = (struct signal_state *)allocate(sizeof(*state));
     state->loop = loop; state->watcher = w;
     checked(uv_signal_init(&loop->native, &state->handle));
     checked(uv_signal_start(&state->handle, signaled, w->signum));
@@ -258,7 +270,7 @@ void ss_signal_start(struct ss_loop *loop, ss_signal *w)
 void ss_signal_stop(struct ss_loop *loop, ss_signal *w)
 {
     (void)loop;
-    struct signal_state *state = w->backend;
+    struct signal_state *state = (struct signal_state *)w->backend;
     if (!state) return;
     w->backend = NULL;
     checked(uv_signal_stop(&state->handle));

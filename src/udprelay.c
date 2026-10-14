@@ -580,7 +580,7 @@ create_server_socket(const char *host, const char *port)
 remote_ctx_t *
 new_remote(int fd, server_ctx_t *server_ctx)
 {
-    remote_ctx_t *ctx = ss_malloc(sizeof(remote_ctx_t));
+    remote_ctx_t *ctx = (remote_ctx_t *)ss_malloc(sizeof(remote_ctx_t));
     memset(ctx, 0, sizeof(remote_ctx_t));
 
     ctx->fd         = fd;
@@ -597,7 +597,7 @@ new_remote(int fd, server_ctx_t *server_ctx)
 server_ctx_t *
 new_server_ctx(int fd)
 {
-    server_ctx_t *ctx = ss_malloc(sizeof(server_ctx_t));
+    server_ctx_t *ctx = (server_ctx_t *)ss_malloc(sizeof(server_ctx_t));
     memset(ctx, 0, sizeof(server_ctx_t));
 
     ctx->fd = fd;
@@ -611,9 +611,9 @@ new_server_ctx(int fd)
 struct query_ctx *
 new_query_ctx(char *buf, size_t len)
 {
-    struct query_ctx *ctx = ss_malloc(sizeof(struct query_ctx));
+    struct query_ctx *ctx = (struct query_ctx *)ss_malloc(sizeof(struct query_ctx));
     memset(ctx, 0, sizeof(struct query_ctx));
-    ctx->buf = ss_malloc(sizeof(buffer_t));
+    ctx->buf = (buffer_t *)ss_malloc(sizeof(buffer_t));
     balloc(ctx->buf, len);
     memcpy(ctx->buf->data, buf, len);
     ctx->buf->len = len;
@@ -809,7 +809,7 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
     socklen_t src_addr_len = sizeof(struct sockaddr_storage);
     memset(&src_addr, 0, src_addr_len);
 
-    buffer_t *buf = ss_malloc(sizeof(buffer_t));
+    buffer_t *buf = (buffer_t *)ss_malloc(sizeof(buffer_t));
     balloc(buf, buf_size);
 
     // recv
@@ -829,7 +829,8 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
     buf->len = r;
 
 #ifdef MODULE_LOCAL
-    int err = server_ctx->crypto->decrypt_udp != NULL
+    int err;
+    err = server_ctx->crypto->decrypt_udp != NULL
               ? server_ctx->crypto->decrypt_udp(buf, server_ctx->crypto->cipher,
                                                 buf_size, &remote_ctx->udp_session)
               : server_ctx->crypto->decrypt_all(buf, server_ctx->crypto->cipher, buf_size);
@@ -843,14 +844,16 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
 #ifdef MODULE_REDIR
     struct sockaddr_storage dst_addr;
     memset(&dst_addr, 0, sizeof(struct sockaddr_storage));
-    int len = parse_udprelay_header(buf->data, buf->len, NULL, NULL, &dst_addr);
+    int len;
+    len = parse_udprelay_header(buf->data, buf->len, NULL, NULL, &dst_addr);
 
     if (dst_addr.ss_family != AF_INET && dst_addr.ss_family != AF_INET6) {
         LOGI("[udp] ss-redir does not support domain name");
         goto CLEAN_UP;
     }
 #else
-    int len = parse_udprelay_header(buf->data, buf->len, NULL, NULL, NULL);
+    int len;
+    len = parse_udprelay_header(buf->data, buf->len, NULL, NULL, NULL);
 #endif
 
     if (len == 0) {
@@ -883,7 +886,8 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
 
     // Reconstruct UDP response header
     char addr_header[MAX_ADDR_HEADER_SIZE];
-    int addr_header_len = construct_udprelay_header(&src_addr, addr_header);
+    int addr_header_len;
+    addr_header_len = construct_udprelay_header(&src_addr, addr_header);
 
     // Construct packet
     brealloc(buf, buf->len + addr_header_len, buf_size);
@@ -891,7 +895,8 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
     memcpy(buf->data, addr_header, addr_header_len);
     buf->len += addr_header_len;
 
-    int err = server_ctx->crypto->encrypt_udp != NULL
+    int err;
+    err = server_ctx->crypto->encrypt_udp != NULL
               ? server_ctx->crypto->encrypt_udp(buf, server_ctx->crypto->cipher,
                                                 buf_size, &remote_ctx->udp_session)
               : server_ctx->crypto->encrypt_all(buf, server_ctx->crypto->cipher, buf_size);
@@ -912,14 +917,17 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
 #ifdef MODULE_REDIR
     convert_ipv4_mapped_ipv6(&dst_addr);
 
-    size_t remote_dst_addr_len = get_sockaddr_len((struct sockaddr *)&dst_addr);
+    size_t remote_dst_addr_len;
+    remote_dst_addr_len = get_sockaddr_len((struct sockaddr *)&dst_addr);
 
-    int src_fd = ss_socket(AF_INET6, SOCK_DGRAM, 0);
+    int src_fd;
+    src_fd = ss_socket(AF_INET6, SOCK_DGRAM, 0);
     if (src_fd < 0) {
         ERROR("[udp] remote_recv_socket");
         goto CLEAN_UP;
     }
-    int opt = 1;
+    int opt;
+    opt = 1;
     if (ss_setsockopt(src_fd, SOL_IPV6, IPV6_TRANSPARENT, &opt, sizeof(opt))) {
         ERROR("[udp] remote_recv_setsockopt");
         ss_socket_close(src_fd);
@@ -937,8 +945,10 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
     }
 #ifdef IP_TOS
     // Set QoS flag
-    int tos = 46 << 2;
-    int rc = ss_setsockopt(src_fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
+    int tos;
+    tos = 46 << 2;
+    int rc;
+    rc = ss_setsockopt(src_fd, IPPROTO_IP, IP_TOS, &tos, sizeof(tos));
     if (rc < 0 && ss_socket_error() != ENOPROTOOPT) {
         LOGE("setting ipv4 dscp failed: %d", ss_socket_error());
     }
@@ -959,9 +969,11 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
     memcpy(&mapped_src_addr, &remote_ctx->src_addr, sizeof(remote_ctx->src_addr));
     convert_ipv4_mapped_ipv6(&mapped_src_addr);
 
-    size_t remote_src_addr_len = get_sockaddr_len((struct sockaddr *)&mapped_src_addr);
+    size_t remote_src_addr_len;
+    remote_src_addr_len = get_sockaddr_len((struct sockaddr *)&mapped_src_addr);
 
-    int s = sendto(src_fd, buf->data, buf->len, 0,
+    int s;
+    s = sendto(src_fd, buf->data, buf->len, 0,
                    (struct sockaddr *)&mapped_src_addr, remote_src_addr_len);
     if (s == -1 && !(ss_socket_error() == EAGAIN || ss_socket_error() == EWOULDBLOCK)) {
         ERROR("[udp] remote_recv_sendto");
@@ -971,9 +983,11 @@ remote_recv_cb(SS_P_ ss_io *w, int revents)
     ss_socket_close(src_fd);
 
 #else
-    size_t remote_src_addr_len = get_sockaddr_len((struct sockaddr *)&remote_ctx->src_addr);
+    size_t remote_src_addr_len;
+    remote_src_addr_len = get_sockaddr_len((struct sockaddr *)&remote_ctx->src_addr);
 
-    int s = sendto(server_ctx->fd, buf->data, buf->len, 0,
+    int s;
+    s = sendto(server_ctx->fd, buf->data, buf->len, 0,
                    (struct sockaddr *)&remote_ctx->src_addr, remote_src_addr_len);
     if (s == -1 && !(ss_socket_error() == EAGAIN || ss_socket_error() == EWOULDBLOCK)) {
         ERROR("[udp] remote_recv_sendto");
@@ -999,7 +1013,7 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
     struct sockaddr_storage src_addr;
     memset(&src_addr, 0, sizeof(struct sockaddr_storage));
 
-    buffer_t *buf = ss_malloc(sizeof(buffer_t));
+    buffer_t *buf = (buffer_t *)ss_malloc(sizeof(buffer_t));
     balloc(buf, buf_size);
 
     socklen_t src_addr_len = sizeof(struct sockaddr_storage);
@@ -1069,8 +1083,10 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
      * decryption, so the crypto layer resolves the session itself and hands
      * it back here to be attached to the relay context.
      */
-    void *udp_session = NULL;
-    int err = server_ctx->crypto->decrypt_udp != NULL
+    void *udp_session;
+    udp_session = NULL;
+    int err;
+    err = server_ctx->crypto->decrypt_udp != NULL
               ? server_ctx->crypto->decrypt_udp(buf, server_ctx->crypto->cipher,
                                                 buf_size, &udp_session)
               : server_ctx->crypto->decrypt_all(buf, server_ctx->crypto->cipher, buf_size);
@@ -1091,7 +1107,8 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
         LOGE("[udp] invalid SOCKS5 UDP header");
         goto CLEAN_UP;
     }
-    uint8_t frag = *(uint8_t *)(buf->data + 2);
+    uint8_t frag;
+    frag = *(uint8_t *)(buf->data + 2);
     offset += 3;
 #endif
 #endif
@@ -1136,8 +1153,10 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
      */
 
 #ifdef MODULE_REDIR
-    char addr_header[MAX_ADDR_HEADER_SIZE] = { 0 };
-    int addr_header_len                    = construct_udprelay_header(&dst_addr, addr_header);
+    char addr_header[MAX_ADDR_HEADER_SIZE];
+    memset(addr_header, 0, sizeof(addr_header));
+    int addr_header_len;
+    addr_header_len = construct_udprelay_header(&dst_addr, addr_header);
 
     if (addr_header_len == 0) {
         LOGE("[udp] failed to parse tproxy addr");
@@ -1152,16 +1171,22 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
 
 #elif MODULE_TUNNEL
 
-    char addr_header[MAX_ADDR_HEADER_SIZE] = { 0 };
-    char *host                             = server_ctx->tunnel_addr.host;
-    char *port                             = server_ctx->tunnel_addr.port;
-    uint16_t port_num                      = 0;
+    char addr_header[MAX_ADDR_HEADER_SIZE];
+    memset(addr_header, 0, sizeof(addr_header));
+    char *host;
+    host = server_ctx->tunnel_addr.host;
+    char *port;
+    port = server_ctx->tunnel_addr.port;
+    uint16_t port_num;
+    port_num = 0;
     if (ss_parse_uint16_port(port, &port_num) == -1) {
         LOGE("[udp] invalid tunnel port");
         goto CLEAN_UP;
     }
-    uint16_t port_net_num                  = htons(port_num);
-    int addr_header_len                    = 0;
+    uint16_t port_net_num;
+    port_net_num = htons(port_num);
+    int addr_header_len;
+    addr_header_len = 0;
 
     struct ss_ip ip;
     if (ss_ip_init(&ip, host) != -1) {
@@ -1217,12 +1242,15 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
 
 #else
 
-    char host[MAX_HOSTNAME_LEN] = { 0 };
-    char port[MAX_PORT_STR_LEN] = { 0 };
+    char host[MAX_HOSTNAME_LEN];
+    char port[MAX_PORT_STR_LEN];
+    memset(host, 0, sizeof(host));
+    memset(port, 0, sizeof(port));
     struct sockaddr_storage dst_addr;
     memset(&dst_addr, 0, sizeof(struct sockaddr_storage));
 
-    int addr_header_len = parse_udprelay_header(buf->data + offset, buf->len - offset,
+    int addr_header_len;
+    addr_header_len = parse_udprelay_header(buf->data + offset, buf->len - offset,
                                                 host, port, &dst_addr);
     if (addr_header_len == 0) {
         // error in parse header
@@ -1231,15 +1259,18 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
 
 #endif
 
+    char *key;
 #ifdef MODULE_LOCAL
-    char *key = hash_key(server_ctx->remote_addr->sa_family, &src_addr);
+    key = hash_key(server_ctx->remote_addr->sa_family, &src_addr);
 #else
-    char *key = hash_key(dst_addr.ss_family, &src_addr);
+    key = hash_key(dst_addr.ss_family, &src_addr);
 #endif
 
-    struct cache *conn_cache = server_ctx->conn_cache;
+    struct cache *conn_cache;
+    conn_cache = server_ctx->conn_cache;
 
-    remote_ctx_t *remote_ctx = NULL;
+    remote_ctx_t *remote_ctx;
+    remote_ctx = NULL;
     cache_lookup(conn_cache, key, HASH_KEY_LEN, (void *)&remote_ctx);
 
     if (remote_ctx != NULL) {
@@ -1290,8 +1321,10 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
     }
 #endif
 
-    const struct sockaddr *remote_addr = server_ctx->remote_addr;
-    const int remote_addr_len          = server_ctx->remote_addr_len;
+    const struct sockaddr *remote_addr;
+    int remote_addr_len;
+    remote_addr     = server_ctx->remote_addr;
+    remote_addr_len = server_ctx->remote_addr_len;
 
     if (remote_ctx == NULL) {
         // Bind to any port
@@ -1354,7 +1387,8 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
         memmove(buf->data, buf->data + offset, buf->len);
     }
 
-    int err = server_ctx->crypto->encrypt_udp != NULL
+    int err;
+    err = server_ctx->crypto->encrypt_udp != NULL
               ? server_ctx->crypto->encrypt_udp(buf, server_ctx->crypto->cipher,
                                                 buf_size, &remote_ctx->udp_session)
               : server_ctx->crypto->encrypt_all(buf, server_ctx->crypto->cipher, buf_size);
@@ -1370,7 +1404,8 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
         }
     }
 
-    int s = sendto(remote_ctx->fd, buf->data, buf->len, 0, remote_addr, remote_addr_len);
+    int s;
+    s = sendto(remote_ctx->fd, buf->data, buf->len, 0, remote_addr, remote_addr_len);
 
     if (s == -1) {
         ERROR("[udp] server_recv_sendto");
@@ -1378,10 +1413,13 @@ server_recv_cb(SS_P_ ss_io *w, int revents)
 
 #else
 
-    int cache_hit  = 0;
-    int need_query = 0;
+    int cache_hit;
+    cache_hit = 0;
+    int need_query;
+    need_query = 0;
 
-    char *addr_header = buf->data + offset;
+    char *addr_header;
+    addr_header = buf->data + offset;
 
     if (buf->len - addr_header_len > packet_size) {
         if (verbose) {
