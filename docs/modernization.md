@@ -6,11 +6,16 @@ review: https://github.com/shadowsocks/shadowsocks-libev/pull/3050 (merged).
 
 ## Compatibility contract
 
-Keep C11 and the existing CLI, JSON configuration, ss:// parsing, SIP003 plugins,
+Keep the existing CLI, JSON configuration, ss:// parsing, SIP003 plugins,
 ACL blacklist/whitelist/outbound precedence, public shadowsocks.h API, legacy
 stream ciphers, AEAD and SIP022 TCP/UDP behavior in the compatibility profile.
 Removing regex or legacy ciphers is explicit opt-in, with configuration errors
 for unavailable functionality. Linux redirection/netfilter remains Linux-only.
+
+The sources are moving from C11 to C++20 module by module, with an explicit
+ownership model and no heap allocation after startup. The public
+`shadowsocks.h` header stays a C11 header with an unchanged ABI. See
+[C++20 core and allocation policy](cpp-core.md).
 
 ## Work and evidence
 
@@ -44,7 +49,7 @@ The fresh baseline passes all 13 original unit tests.
 
 ## Build interface
 
-Requires CMake 3.20+, a C11 compiler, and a build executor. Presets use Ninja;
+Requires CMake 3.20+, C11 and C++20 compilers, and a build executor. Presets use Ninja;
 manual configuration may use another generator.
 
 ```
