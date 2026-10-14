@@ -10,12 +10,13 @@
 
 #include <sodium.h>
 
-#include "crypto.h"
 #include "crypto/aead.hpp"
-#include "netutils.h"
-#include "ppbloom.h"
 #include "alloc_audit/alloc_probe.hpp"
 #include "test_helpers.hpp"
+
+#include "crypto.h"
+#include "netutils.h"
+#include "ppbloom.h"
 #include "utils.h"
 
 #undef min
