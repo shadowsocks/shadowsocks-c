@@ -217,7 +217,9 @@ Result<StreamTcpDecryptor::Step> StreamTcpDecryptor::decrypt(std::span<const std
     if (!ready_) {
         std::size_t want = key_.spec.iv_len - iv_have_;
         std::size_t take = std::min(want, in.size());
-        std::memcpy(iv_.data() + iv_have_, in.data(), take);
+        if (take != 0) { // an empty span may have a null data()
+            std::memcpy(iv_.data() + iv_have_, in.data(), take);
+        }
         iv_have_ += take;
         step.consumed += take;
         in = in.subspan(take);

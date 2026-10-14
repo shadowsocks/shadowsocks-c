@@ -179,6 +179,9 @@ void replay(const sc::StreamKey &key)
     std::uint8_t out[16];
     sc::StreamTcpDecryptor first, second;
     SS_CHECK(first.init(key, seen.filter()) && second.init(key, seen.filter()));
+    // An empty read before the IV arrives is a no-op.
+    auto none = first.decrypt(std::span<const std::uint8_t>(), out);
+    SS_CHECK(none && none->consumed == 0 && none->produced == 0 && !first.iv_received());
     // The IV alone is enough to register it.
     auto step = first.decrypt(std::span<const std::uint8_t>(wire.data(), key.spec.iv_len), out);
     SS_CHECK(step && step->produced == 0 && first.iv_received());
