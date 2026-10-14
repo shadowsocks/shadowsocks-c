@@ -1,13 +1,13 @@
 base: core22
 name: shadowsocks-libev
 version: '3.3.6'
-summary: libev port of shadowsocks
+summary: lightweight shadowsocks implementation
 description: |
   Shadowsocks-libev is a lightweight and secure SOCKS5 proxy for embedded
   devices and low-end boxes.
 
-  It is rewritten in pure C and depends on libev, designed to be a
-  lightweight implementation of the shadowsocks protocol.
+  It is written in C++20 on libuv, designed to be a lightweight
+  implementation of the shadowsocks protocol.
 grade: stable
 confinement: strict
 
@@ -58,13 +58,13 @@ parts:
       - -DBUILD_TESTING=OFF
     build-packages:
       - libpcre2-dev
-      - libev-dev
+      - libuv1-dev
       - libc-ares-dev
       - libmbedtls-dev
       - libsodium-dev
     stage-packages:
       - libc-ares2
-      - libev4
+      - libuv1
       - libmbedcrypto7
       - libmbedtls14
       - libmbedx509-1

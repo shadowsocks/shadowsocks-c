@@ -40,9 +40,9 @@ Description: lightweight and secure socks5 proxy
  Shadowsocks-libev is a lightweight and secure socks5 proxy for
  embedded devices and low end boxes.
  .
- Shadowsocks-libev was inspired by Shadowsocks (in Python). It's rewritten
- in pure C and only depends on libev, mbedTLS and a few other tiny
- libraries.
+ Shadowsocks-libev was inspired by Shadowsocks (in Python). It's written
+ in C++20 without exceptions or a runtime heap after startup, and only
+ depends on libuv, mbedTLS, libsodium, c-ares and PCRE2.
 
 Package: libshadowsocks-libev-dev
 Architecture: any
@@ -61,9 +61,9 @@ Description: lightweight and secure socks5 proxy (development files)
  Shadowsocks-libev is a lightweight and secure socks5 proxy for
  embedded devices and low end boxes.
  .
- Shadowsocks-libev was inspired by Shadowsocks (in Python). It's rewritten
- in pure C and only depends on libev, mbedTLS and a few other tiny
- libraries.
+ Shadowsocks-libev was inspired by Shadowsocks (in Python). It's written
+ in C++20 without exceptions or a runtime heap after startup, and only
+ depends on libuv, mbedTLS, libsodium, c-ares and PCRE2.
  .
  This package provides C header files for the libraries.
 
@@ -83,8 +83,8 @@ Description: lightweight and secure socks5 proxy (shared library)
  Shadowsocks-libev is a lightweight and secure socks5 proxy for
  embedded devices and low end boxes.
  .
- Shadowsocks-libev was inspired by Shadowsocks (in Python). It's rewritten
- in pure C and only depends on libev, mbedTLS and a few other tiny
- libraries.
+ Shadowsocks-libev was inspired by Shadowsocks (in Python). It's written
+ in C++20 without exceptions or a runtime heap after startup, and only
+ depends on libuv, mbedTLS, libsodium, c-ares and PCRE2.
  .
  This package provides shared libraries.
