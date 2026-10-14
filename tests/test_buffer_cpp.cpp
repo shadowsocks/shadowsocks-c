@@ -1,103 +1,94 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Legacy buffer helpers in the C crypto reference (tests/reference/crypto.h):
+// balloc, brealloc and bprepend.
+#include <cstdlib>
+#include <cstring>
 
-#include <assert.h>
-#include <string.h>
-#include <stdlib.h>
-
-int verbose = 0;
+#include "test_helpers.hpp"
 
 #include "crypto.h"
 
-/* Provide nonce_cache symbol needed by crypto.cpp */
-struct cache *nonce_cache = NULL;
-
-static void
-test_balloc(void)
-{
-    buffer_t buf;
-    memset(&buf, 0, sizeof(buf));
-
-    int ret = balloc(&buf, 100);
-    assert(ret == 100);
-    (void)ret;
-    assert(buf.data != NULL);
-    assert(buf.capacity >= 100);
-    assert(buf.len == 0);
-    assert(buf.idx == 0);
-
-    bfree(&buf);
-    assert(buf.data == NULL);
-    assert(buf.capacity == 0);
+extern "C" {
+int verbose = 0;
+// Provide the nonce_cache symbol needed by the crypto reference.
+struct cache *nonce_cache = nullptr;
 }
 
-static void
-test_brealloc(void)
+namespace {
+
+void test_balloc()
 {
     buffer_t buf;
-    memset(&buf, 0, sizeof(buf));
+    std::memset(&buf, 0, sizeof(buf));
+
+    SS_CHECK(balloc(&buf, 100) == 100);
+    SS_CHECK(buf.data != nullptr);
+    SS_CHECK(buf.capacity >= 100);
+    SS_CHECK(buf.len == 0);
+    SS_CHECK(buf.idx == 0);
+
+    bfree(&buf);
+    SS_CHECK(buf.data == nullptr);
+    SS_CHECK(buf.capacity == 0);
+}
+
+void test_brealloc()
+{
+    buffer_t buf;
+    std::memset(&buf, 0, sizeof(buf));
 
     balloc(&buf, 50);
     buf.len = 10;
 
-    /* Grow the buffer */
-    int ret = brealloc(&buf, 10, 200);
-    assert(ret == 200);
-    (void)ret;
-    assert(buf.capacity >= 200);
-    assert(buf.len == 10);
+    // Grow the buffer.
+    SS_CHECK(brealloc(&buf, 10, 200) == 200);
+    SS_CHECK(buf.capacity >= 200);
+    SS_CHECK(buf.len == 10);
 
     bfree(&buf);
 }
 
-static void
-test_bprepend(void)
+void test_bprepend()
 {
-    buffer_t dst, src;
-    memset(&dst, 0, sizeof(dst));
-    memset(&src, 0, sizeof(src));
+    buffer_t dst;
+    buffer_t src;
+    std::memset(&dst, 0, sizeof(dst));
+    std::memset(&src, 0, sizeof(src));
 
     balloc(&dst, 100);
     balloc(&src, 100);
 
-    /* Put some data in src */
-    memcpy(src.data, "HEADER", 6);
+    std::memcpy(src.data, "HEADER", 6);
     src.len = 6;
 
-    /* Put some data in dst */
-    memcpy(dst.data, "BODY", 4);
+    std::memcpy(dst.data, "BODY", 4);
     dst.len = 4;
 
-    int ret = bprepend(&dst, &src, 200);
-    assert(ret == 10);
-    (void)ret;
-    assert(dst.len == 10);
-    assert(memcmp(dst.data, "HEADERBODY", 10) == 0);
+    SS_CHECK(bprepend(&dst, &src, 200) == 10);
+    SS_CHECK(dst.len == 10);
+    SS_CHECK(std::memcmp(dst.data, "HEADERBODY", 10) == 0);
 
     bfree(&dst);
     bfree(&src);
 }
 
-static void
-test_balloc_zero(void)
+void test_balloc_zero()
 {
     buffer_t buf;
-    memset(&buf, 0, sizeof(buf));
+    std::memset(&buf, 0, sizeof(buf));
 
-    int ret = balloc(&buf, 0);
-    assert(ret == 0);
-    (void)ret;
-    /* A zero-capacity buffer should still succeed */
+    SS_CHECK(balloc(&buf, 0) == 0);
+    // A zero-capacity buffer should still succeed.
     bfree(&buf);
 }
 
-int
-main(void)
+} // namespace
+
+int main()
 {
-    test_balloc();
-    test_brealloc();
-    test_bprepend();
-    test_balloc_zero();
+    SS_RUN(test_balloc);
+    SS_RUN(test_brealloc);
+    SS_RUN(test_bprepend);
+    SS_RUN(test_balloc_zero);
     return 0;
 }

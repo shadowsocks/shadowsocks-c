@@ -1,129 +1,160 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <assert.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-
-int verbose = 0;
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Basic behaviour of the legacy cache (tests/reference/cache.cpp): create,
+// insert, lookup, remove and eviction.
+#include <cerrno>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 
 #include "cache.h"
+#include "test_helpers.hpp"
 
-static void
-test_create_delete(void)
-{
-    struct cache *c = NULL;
-    int ret = cache_create(&c, 100, NULL);
-    assert(ret == 0);
-    assert(c != NULL);
-
-    ret = cache_delete(c, 0);
-    assert(ret == 0);
-    (void)ret;
+extern "C" {
+int verbose = 0;
 }
 
-static void
-test_create_null(void)
+namespace {
+
+char *dup_string(const char *text)
 {
-    int ret = cache_create(NULL, 100, NULL);
-    assert(ret == EINVAL);
-    (void)ret;
+    const size_t size = std::strlen(text) + 1;
+    auto *copy        = static_cast<char *>(std::malloc(size));
+    SS_CHECK(copy != nullptr);
+    std::memcpy(copy, text, size);
+    return copy;
 }
 
-static void
-test_insert_lookup(void)
+// The legacy API takes writable keys; copy literals into a buffer.
+struct Key {
+    char text[16];
+    size_t length;
+    explicit Key(const char *literal) : text{}, length(std::strlen(literal))
+    {
+        SS_CHECK(length < sizeof(text));
+        std::memcpy(text, literal, length);
+    }
+};
+
+void insert(struct cache *c, const char *key, const char *value)
 {
-    struct cache *c = NULL;
-    cache_create(&c, 100, NULL);
+    Key k(key);
+    cache_insert(c, k.text, k.length, dup_string(value));
+}
 
-    char *data = strdup("test_data");
-    cache_insert(c, "key1", 4, data);
+void lookup(struct cache *c, const char *key, char **result)
+{
+    Key k(key);
+    cache_lookup(c, k.text, k.length, result);
+}
 
-    char *result = NULL;
-    cache_lookup(c, "key1", 4, &result);
-    assert(result != NULL);
-    assert(strcmp(result, "test_data") == 0);
+int exists(struct cache *c, const char *key)
+{
+    Key k(key);
+    return cache_key_exist(c, k.text, k.length);
+}
+
+void remove_key(struct cache *c, const char *key)
+{
+    Key k(key);
+    cache_remove(c, k.text, k.length);
+}
+
+void test_create_delete()
+{
+    struct cache *c = nullptr;
+    SS_CHECK(cache_create(&c, 100, nullptr) == 0);
+    SS_CHECK(c != nullptr);
+    SS_CHECK(cache_delete(c, 0) == 0);
+}
+
+void test_create_null()
+{
+    SS_CHECK(cache_create(nullptr, 100, nullptr) == EINVAL);
+}
+
+void test_insert_lookup()
+{
+    struct cache *c = nullptr;
+    cache_create(&c, 100, nullptr);
+
+    insert(c, "key1", "test_data");
+
+    char *result = nullptr;
+    lookup(c, "key1", &result);
+    SS_CHECK(result != nullptr);
+    SS_CHECK(std::strcmp(result, "test_data") == 0);
 
     cache_delete(c, 0);
 }
 
-static void
-test_key_exist(void)
+void test_key_exist()
 {
-    struct cache *c = NULL;
-    cache_create(&c, 100, NULL);
+    struct cache *c = nullptr;
+    cache_create(&c, 100, nullptr);
 
-    char *data = strdup("value");
-    cache_insert(c, "mykey", 5, data);
+    insert(c, "mykey", "value");
 
-    assert(cache_key_exist(c, "mykey", 5) == 1);
-    assert(cache_key_exist(c, "nokey", 5) == 0);
+    SS_CHECK(exists(c, "mykey") == 1);
+    SS_CHECK(exists(c, "nokey") == 0);
 
     cache_delete(c, 0);
 }
 
-static void
-test_remove(void)
+void test_remove()
 {
-    struct cache *c = NULL;
-    cache_create(&c, 100, NULL);
+    struct cache *c = nullptr;
+    cache_create(&c, 100, nullptr);
 
-    char *data = strdup("to_remove");
-    cache_insert(c, "rmkey", 5, data);
-    assert(cache_key_exist(c, "rmkey", 5) == 1);
+    insert(c, "rmkey", "to_remove");
+    SS_CHECK(exists(c, "rmkey") == 1);
 
-    cache_remove(c, "rmkey", 5);
-    assert(cache_key_exist(c, "rmkey", 5) == 0);
+    remove_key(c, "rmkey");
+    SS_CHECK(exists(c, "rmkey") == 0);
 
     cache_delete(c, 0);
 }
 
-static void
-test_lookup_missing(void)
+void test_lookup_missing()
 {
-    struct cache *c = NULL;
-    cache_create(&c, 100, NULL);
+    struct cache *c = nullptr;
+    cache_create(&c, 100, nullptr);
 
-    char *result = (char *)0xdeadbeef;
-    cache_lookup(c, "missing", 7, &result);
-    assert(result == NULL);
+    char *result = reinterpret_cast<char *>(static_cast<uintptr_t>(0xdeadbeef));
+    lookup(c, "missing", &result);
+    SS_CHECK(result == nullptr);
 
     cache_delete(c, 0);
 }
 
-static void
-test_eviction(void)
+void test_eviction()
 {
-    struct cache *c = NULL;
-    cache_create(&c, 3, NULL);
+    struct cache *c = nullptr;
+    cache_create(&c, 3, nullptr);
 
-    /* Insert 3 entries to fill cache */
-    cache_insert(c, "k1", 2, strdup("v1"));
-    cache_insert(c, "k2", 2, strdup("v2"));
-    cache_insert(c, "k3", 2, strdup("v3"));
+    // Fill the cache.
+    insert(c, "k1", "v1");
+    insert(c, "k2", "v2");
+    insert(c, "k3", "v3");
 
-    /* This should trigger eviction of the oldest entry */
-    cache_insert(c, "k4", 2, strdup("v4"));
+    // This triggers eviction of the oldest entry.
+    insert(c, "k4", "v4");
 
-    /* k1 should have been evicted */
-    assert(cache_key_exist(c, "k1", 2) == 0);
-    /* k4 should exist */
-    assert(cache_key_exist(c, "k4", 2) == 1);
+    SS_CHECK(exists(c, "k1") == 0);
+    SS_CHECK(exists(c, "k4") == 1);
 
     cache_delete(c, 0);
 }
 
-int
-main(void)
+} // namespace
+
+int main()
 {
-    test_create_delete();
-    test_create_null();
-    test_insert_lookup();
-    test_key_exist();
-    test_remove();
-    test_lookup_missing();
-    test_eviction();
+    SS_RUN(test_create_delete);
+    SS_RUN(test_create_null);
+    SS_RUN(test_insert_lookup);
+    SS_RUN(test_key_exist);
+    SS_RUN(test_remove);
+    SS_RUN(test_lookup_missing);
+    SS_RUN(test_eviction);
     return 0;
 }

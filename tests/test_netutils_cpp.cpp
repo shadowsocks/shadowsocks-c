@@ -1,138 +1,140 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
-
-#include <assert.h>
-#include <string.h>
-#include <stdlib.h>
-#include "test_helpers.h"
-
-int verbose = 0;
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Address helpers (src/netutils.cpp): sockaddr comparison, hostname
+// validation and literal-address parsing.
+#include <cstring>
 
 #include "netutils.h"
+#include "test_helpers.h"
+#include "test_helpers.hpp"
 
-static void
-test_get_sockaddr_len(void)
-{
-    struct sockaddr_in addr4;
-    struct sockaddr_in6 addr6;
-    struct sockaddr_storage unknown;
-
-    memset(&addr4, 0, sizeof(addr4));
-    addr4.sin_family = AF_INET;
-    assert(get_sockaddr_len((struct sockaddr *)&addr4) == sizeof(struct sockaddr_in));
-
-    memset(&addr6, 0, sizeof(addr6));
-    addr6.sin6_family = AF_INET6;
-    assert(get_sockaddr_len((struct sockaddr *)&addr6) == sizeof(struct sockaddr_in6));
-
-    memset(&unknown, 0, sizeof(unknown));
-    unknown.ss_family = AF_UNSPEC;
-    assert(get_sockaddr_len((struct sockaddr *)&unknown) == 0);
+extern "C" {
+int verbose = 0;
 }
 
-static void
-test_sockaddr_cmp(void)
-{
-    struct sockaddr_storage a, b;
-    struct sockaddr_in *a4 = (struct sockaddr_in *)&a;
-    struct sockaddr_in *b4 = (struct sockaddr_in *)&b;
+namespace {
 
-    /* Same address and port */
-    memset(&a, 0, sizeof(a));
-    memset(&b, 0, sizeof(b));
+// get_sockaddr() takes writable strings; copy the literals.
+ssize_t resolve(const char *host, const char *port, sockaddr_storage *storage)
+{
+    char host_buf[64];
+    char port_buf[16];
+    SS_CHECK(std::strlen(host) < sizeof(host_buf) && std::strlen(port) < sizeof(port_buf));
+    std::strcpy(host_buf, host);
+    std::strcpy(port_buf, port);
+    return get_sockaddr(host_buf, port_buf, storage, 0, 0);
+}
+
+void test_get_sockaddr_len()
+{
+    sockaddr_in addr4{};
+    addr4.sin_family = AF_INET;
+    SS_CHECK(get_sockaddr_len(reinterpret_cast<sockaddr *>(&addr4)) == sizeof(sockaddr_in));
+
+    sockaddr_in6 addr6{};
+    addr6.sin6_family = AF_INET6;
+    SS_CHECK(get_sockaddr_len(reinterpret_cast<sockaddr *>(&addr6)) == sizeof(sockaddr_in6));
+
+    sockaddr_storage unknown{};
+    unknown.ss_family = AF_UNSPEC;
+    SS_CHECK(get_sockaddr_len(reinterpret_cast<sockaddr *>(&unknown)) == 0);
+}
+
+void test_sockaddr_cmp()
+{
+    sockaddr_storage a{};
+    sockaddr_storage b{};
+    auto *a4 = reinterpret_cast<sockaddr_in *>(&a);
+    auto *b4 = reinterpret_cast<sockaddr_in *>(&b);
+
+    // Same address and port.
     a4->sin_family = AF_INET;
     b4->sin_family = AF_INET;
-    a4->sin_port = htons(80);
-    b4->sin_port = htons(80);
+    a4->sin_port   = htons(80);
+    b4->sin_port   = htons(80);
     inet_pton(AF_INET, "127.0.0.1", &a4->sin_addr);
     inet_pton(AF_INET, "127.0.0.1", &b4->sin_addr);
-    assert(sockaddr_cmp(&a, &b, sizeof(struct sockaddr_in)) == 0);
+    SS_CHECK(sockaddr_cmp(&a, &b, sizeof(sockaddr_in)) == 0);
 
-    /* Different port */
+    // Different port.
     b4->sin_port = htons(81);
-    assert(sockaddr_cmp(&a, &b, sizeof(struct sockaddr_in)) != 0);
+    SS_CHECK(sockaddr_cmp(&a, &b, sizeof(sockaddr_in)) != 0);
 }
 
-static void
-test_sockaddr_cmp_addr(void)
+void test_sockaddr_cmp_addr()
 {
-    struct sockaddr_storage a, b;
-    struct sockaddr_in *a4 = (struct sockaddr_in *)&a;
-    struct sockaddr_in *b4 = (struct sockaddr_in *)&b;
+    sockaddr_storage a{};
+    sockaddr_storage b{};
+    auto *a4 = reinterpret_cast<sockaddr_in *>(&a);
+    auto *b4 = reinterpret_cast<sockaddr_in *>(&b);
 
-    memset(&a, 0, sizeof(a));
-    memset(&b, 0, sizeof(b));
     a4->sin_family = AF_INET;
     b4->sin_family = AF_INET;
-    a4->sin_port = htons(80);
-    b4->sin_port = htons(443);
+    a4->sin_port   = htons(80);
+    b4->sin_port   = htons(443);
     inet_pton(AF_INET, "10.0.0.1", &a4->sin_addr);
     inet_pton(AF_INET, "10.0.0.1", &b4->sin_addr);
 
-    /* Same address, different port - should be equal */
-    assert(sockaddr_cmp_addr(&a, &b, sizeof(struct sockaddr_in)) == 0);
+    // Same address, different port - should be equal.
+    SS_CHECK(sockaddr_cmp_addr(&a, &b, sizeof(sockaddr_in)) == 0);
 
-    /* Different address */
+    // Different address.
     inet_pton(AF_INET, "10.0.0.2", &b4->sin_addr);
-    assert(sockaddr_cmp_addr(&a, &b, sizeof(struct sockaddr_in)) != 0);
+    SS_CHECK(sockaddr_cmp_addr(&a, &b, sizeof(sockaddr_in)) != 0);
 }
 
-static void
-test_validate_hostname(void)
+void test_validate_hostname()
 {
-    /* Valid hostnames */
-    assert(validate_hostname("example.com", 11) == 1);
-    assert(validate_hostname("sub.example.com", 15) == 1);
-    assert(validate_hostname("a", 1) == 1);
-    assert(validate_hostname("a-b", 3) == 1);
-    assert(validate_hostname("123.456", 7) == 1);
+    // Valid hostnames.
+    SS_CHECK(validate_hostname("example.com", 11) == 1);
+    SS_CHECK(validate_hostname("sub.example.com", 15) == 1);
+    SS_CHECK(validate_hostname("a", 1) == 1);
+    SS_CHECK(validate_hostname("a-b", 3) == 1);
+    SS_CHECK(validate_hostname("123.456", 7) == 1);
 
-    /* Invalid hostnames */
-    assert(validate_hostname(NULL, 0) == 0);
-    assert(validate_hostname("", 0) == 0);
-    assert(validate_hostname(".example.com", 12) == 0);     /* starts with dot */
-    assert(validate_hostname("-example.com", 12) == 0);     /* label starts with hyphen */
-    assert(validate_hostname("example-.com", 12) == 0);     /* label ends with hyphen */
+    // Invalid hostnames.
+    SS_CHECK(validate_hostname(nullptr, 0) == 0);
+    SS_CHECK(validate_hostname("", 0) == 0);
+    SS_CHECK(validate_hostname(".example.com", 12) == 0); // starts with dot
+    SS_CHECK(validate_hostname("-example.com", 12) == 0); // label starts with hyphen
+    SS_CHECK(validate_hostname("example-.com", 12) == 0); // label ends with hyphen
 
-    /* Too long hostname (> 255) */
+    // Too long hostname (> 255).
     char long_name[260];
-    memset(long_name, 'a', 259);
+    std::memset(long_name, 'a', 259);
     long_name[259] = '\0';
-    assert(validate_hostname(long_name, 259) == 0);
+    SS_CHECK(validate_hostname(long_name, 259) == 0);
 
-    /* Explicit length must be honored; callers may pass non-NUL data. */
-    char raw_name[3] = { 'a', 'b', 'c' };
-    assert(validate_hostname(raw_name, 3) == 1);
+    // Explicit length must be honored; callers may pass non-NUL data.
+    const char raw_name[3] = { 'a', 'b', 'c' };
+    SS_CHECK(validate_hostname(raw_name, 3) == 1);
 }
 
-static void
-test_get_sockaddr_rejects_invalid_ip_literal_ports(void)
+void test_get_sockaddr_rejects_invalid_ip_literal_ports()
 {
-    struct sockaddr_storage storage;
-    struct sockaddr_in *addr4 = (struct sockaddr_in *)&storage;
+    sockaddr_storage storage{};
+    auto *addr4 = reinterpret_cast<sockaddr_in *>(&storage);
 
-    memset(&storage, 0, sizeof(storage));
-    assert(get_sockaddr("localhost", "8388", &storage, 0, 0) == -1);
-    assert(get_sockaddr("127.0.0.1", "8388", &storage, 0, 0) == 0);
-    assert(addr4->sin_family == AF_INET);
-    assert(ntohs(addr4->sin_port) == 8388);
+    SS_CHECK(resolve("localhost", "8388", &storage) == -1);
+    SS_CHECK(resolve("127.0.0.1", "8388", &storage) == 0);
+    SS_CHECK(addr4->sin_family == AF_INET);
+    SS_CHECK(ntohs(addr4->sin_port) == 8388);
 
-    memset(&storage, 0, sizeof(storage));
-    assert(get_sockaddr("127.0.0.1", "70000", &storage, 0, 0) == -1);
+    storage = sockaddr_storage{};
+    SS_CHECK(resolve("127.0.0.1", "70000", &storage) == -1);
 
-    memset(&storage, 0, sizeof(storage));
-    assert(get_sockaddr("127.0.0.1", "12x", &storage, 0, 0) == -1);
+    storage = sockaddr_storage{};
+    SS_CHECK(resolve("127.0.0.1", "12x", &storage) == -1);
 }
 
-int
-main(void)
+} // namespace
+
+int main()
 {
     test_network_init();
-    test_get_sockaddr_len();
-    test_sockaddr_cmp();
-    test_sockaddr_cmp_addr();
-    test_validate_hostname();
-    test_get_sockaddr_rejects_invalid_ip_literal_ports();
+    SS_RUN(test_get_sockaddr_len);
+    SS_RUN(test_sockaddr_cmp);
+    SS_RUN(test_sockaddr_cmp_addr);
+    SS_RUN(test_validate_hostname);
+    SS_RUN(test_get_sockaddr_rejects_invalid_ip_literal_ports);
     return 0;
 }

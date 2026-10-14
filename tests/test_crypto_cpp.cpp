@@ -1,79 +1,78 @@
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+// SPDX-License-Identifier: GPL-3.0-or-later
+// Legacy crypto reference (tests/reference/crypto.cpp): MD5, key derivation,
+// HKDF, key parsing, AEAD salt replay and the printable-salt experiment.
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 
-#include <assert.h>
-#include <string.h>
-#include <stdlib.h>
 #include <sodium.h>
 
-int verbose = 0;
+#include "test_helpers.hpp"
 
 #include "crypto.h"
 #include "ppbloom.h"
 #include "utils.h"
 
-/* Provide nonce_cache symbol needed by crypto.cpp */
-struct cache *nonce_cache = NULL;
+extern "C" {
+int verbose = 0;
+// Provide the nonce_cache symbol needed by the crypto reference.
+struct cache *nonce_cache = nullptr;
+}
 
-static void
-test_crypto_md5(void)
+namespace {
+
+void test_crypto_md5()
 {
     /* MD5("") = d41d8cd98f00b204e9800998ecf8427e */
     unsigned char result[16];
-    crypto_md5((const unsigned char *)"", 0, result);
+    crypto_md5(reinterpret_cast<const unsigned char *>(""), 0, result);
 
     unsigned char expected[] = {
         0xd4, 0x1d, 0x8c, 0xd9, 0x8f, 0x00, 0xb2, 0x04,
         0xe9, 0x80, 0x09, 0x98, 0xec, 0xf8, 0x42, 0x7e
     };
-    assert(memcmp(result, expected, 16) == 0);
-    (void)expected;
+    SS_CHECK(std::memcmp(result, expected, 16) == 0);
 
     /* MD5("abc") = 900150983cd24fb0d6963f7d28e17f72 */
-    crypto_md5((const unsigned char *)"abc", 3, result);
+    crypto_md5(reinterpret_cast<const unsigned char *>("abc"), 3, result);
     unsigned char expected_abc[] = {
         0x90, 0x01, 0x50, 0x98, 0x3c, 0xd2, 0x4f, 0xb0,
         0xd6, 0x96, 0x3f, 0x7d, 0x28, 0xe1, 0x7f, 0x72
     };
-    assert(memcmp(result, expected_abc, 16) == 0);
-    (void)expected_abc;
+    SS_CHECK(std::memcmp(result, expected_abc, 16) == 0);
 }
 
-static void
-test_crypto_derive_key(void)
+void test_crypto_derive_key()
 {
     uint8_t key[32];
 
-    assert(crypto_derive_key(NULL, key, 32) == 0);
+    SS_CHECK(crypto_derive_key(nullptr, key, 32) == 0);
 
     /* derive_key should produce deterministic output from a password */
     int ret = crypto_derive_key("password", key, 32);
-    assert(ret == 32);
+    SS_CHECK(ret == 32);
 
     /* Same password should produce same key */
     uint8_t key2[32];
     ret = crypto_derive_key("password", key2, 32);
-    assert(ret == 32);
-    assert(memcmp(key, key2, 32) == 0);
+    SS_CHECK(ret == 32);
+    SS_CHECK(std::memcmp(key, key2, 32) == 0);
 
     /* Different password should produce different key */
     uint8_t key3[32];
     ret = crypto_derive_key("different", key3, 32);
-    assert(ret == 32);
-    assert(memcmp(key, key3, 32) != 0);
-    (void)ret;
+    SS_CHECK(ret == 32);
+    SS_CHECK(std::memcmp(key, key3, 32) != 0);
 }
 
-static void
-test_crypto_hkdf(void)
+void test_crypto_hkdf()
 {
     /* RFC 5869 Test Case 1 */
     const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-    assert(md != NULL);
+    SS_CHECK(md != nullptr);
 
     unsigned char ikm[22];
-    memset(ikm, 0x0b, 22);
+    std::memset(ikm, 0x0b, 22);
 
     unsigned char salt[] = {
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
@@ -88,8 +87,7 @@ test_crypto_hkdf(void)
     unsigned char okm[42];
     int ret = crypto_hkdf(md, salt, sizeof(salt), ikm, sizeof(ikm),
                           info, sizeof(info), okm, sizeof(okm));
-    assert(ret == 0);
-    (void)ret;
+    SS_CHECK(ret == 0);
 
     unsigned char expected_okm[] = {
         0x3c, 0xb2, 0x5f, 0x25, 0xfa, 0xac, 0xd5, 0x7a,
@@ -99,18 +97,16 @@ test_crypto_hkdf(void)
         0x34, 0x00, 0x72, 0x08, 0xd5, 0xb8, 0x87, 0x18,
         0x58, 0x65
     };
-    assert(memcmp(okm, expected_okm, 42) == 0);
-    (void)expected_okm;
+    SS_CHECK(std::memcmp(okm, expected_okm, 42) == 0);
 }
 
-static void
-test_crypto_hkdf_extract(void)
+void test_crypto_hkdf_extract()
 {
     const mbedtls_md_info_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
-    assert(md != NULL);
+    SS_CHECK(md != nullptr);
 
     unsigned char ikm[22];
-    memset(ikm, 0x0b, 22);
+    std::memset(ikm, 0x0b, 22);
 
     unsigned char salt[] = {
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
@@ -119,8 +115,7 @@ test_crypto_hkdf_extract(void)
 
     unsigned char prk[32];
     int ret = crypto_hkdf_extract(md, salt, sizeof(salt), ikm, sizeof(ikm), prk);
-    assert(ret == 0);
-    (void)ret;
+    SS_CHECK(ret == 0);
 
     /* RFC 5869 Test Case 1 PRK */
     unsigned char expected_prk[] = {
@@ -129,12 +124,10 @@ test_crypto_hkdf_extract(void)
         0x90, 0xb6, 0xc7, 0x3b, 0xb5, 0x0f, 0x9c, 0x31,
         0x22, 0xec, 0x84, 0x4a, 0xd7, 0xc2, 0xb3, 0xe5
     };
-    assert(memcmp(prk, expected_prk, 32) == 0);
-    (void)expected_prk;
+    SS_CHECK(std::memcmp(prk, expected_prk, 32) == 0);
 }
 
-static void
-test_crypto_parse_key(void)
+void test_crypto_parse_key()
 {
     /* base64_encode uses URL-safe base64 with -_ instead of +/ */
     uint8_t key[32];
@@ -143,29 +136,27 @@ test_crypto_parse_key(void)
     /* 32 zero bytes = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=" in standard base64 */
     /* With URL-safe: same since no +/ needed */
     int ret = crypto_parse_key("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", key, 32);
-    assert(ret == 32);
-    (void)ret;
+    SS_CHECK(ret == 32);
 
     /* All bytes should be 0 */
     for (int i = 0; i < 32; i++) {
-        assert(key[i] == 0);
+        SS_CHECK(key[i] == 0);
     }
 }
 
-static void
-test_aead_repeat_salt_rejection_releases_context(void)
+void test_aead_repeat_salt_rejection_releases_context()
 {
-    crypto_t *crypto = crypto_init("password", NULL, "aes-128-gcm");
-    assert(crypto != NULL);
+    crypto_t *crypto = crypto_init("password", nullptr, "aes-128-gcm");
+    SS_CHECK(crypto != nullptr);
 
     buffer_t packet;
-    memset(&packet, 0, sizeof(packet));
+    std::memset(&packet, 0, sizeof(packet));
     balloc(&packet, 64);
-    memcpy(packet.data, "payload", 7);
+    std::memcpy(packet.data, "payload", 7);
     packet.len = 7;
 
-    assert(crypto->encrypt_all(&packet, crypto->cipher, 128) == CRYPTO_OK);
-    assert(crypto->decrypt_all(&packet, crypto->cipher, 128) == CRYPTO_ERROR);
+    SS_CHECK(crypto->encrypt_all(&packet, crypto->cipher, 128) == CRYPTO_OK);
+    SS_CHECK(crypto->decrypt_all(&packet, crypto->cipher, 128) == CRYPTO_ERROR);
 
     bfree(&packet);
     ppbloom_free();
@@ -175,40 +166,39 @@ test_aead_repeat_salt_rejection_releases_context(void)
 
 /* A nonprintable sentinel exposes the selected span without adding wire state.
  * Retain the random tail so every test connection still has a fresh salt. */
-static void
-test_printable_salt_lengths(const char *method)
+void test_printable_salt_lengths(const char *method)
 {
-    crypto_t *crypto = crypto_init("password", NULL, method);
-    assert(crypto != NULL);
+    crypto_t *crypto = crypto_init("password", nullptr, method);
+    SS_CHECK(crypto != nullptr);
     unsigned seen = 0;
-    buffer_t buf = {0};
+    buffer_t buf{};
     balloc(&buf, 2048);
     for (int sample = 0; sample < 512; sample++) {
         cipher_ctx_t enc;
         crypto->ctx_init(crypto->cipher, &enc, 1);
         enc.printable_salt = 1;
-        memset(enc.salt, 0xff, 12);
+        std::memset(enc.salt, 0xff, 12);
         uint8_t tail[20];
-        memcpy(tail, enc.salt + 12, sizeof(tail));
+        std::memcpy(tail, enc.salt + 12, sizeof(tail));
         buf.data[0] = 'x';
         buf.len = 1;
-        assert(crypto->encrypt(&buf, &enc, 2048) == CRYPTO_OK);
-        assert(buf.len == 32 + 2 + 32 + 1);
+        SS_CHECK(crypto->encrypt(&buf, &enc, 2048) == CRYPTO_OK);
+        SS_CHECK(buf.len == 32 + 2 + 32 + 1);
         size_t length = 0;
         while (length < 12 && enc.salt[length] != 0xff) {
-            assert(enc.salt[length] >= 0x20 && enc.salt[length] <= 0x7e);
+            SS_CHECK(enc.salt[length] >= 0x20 && enc.salt[length] <= 0x7e);
             length++;
         }
-        assert(length >= 6 && length <= 12);
+        SS_CHECK(length >= 6 && length <= 12);
         for (size_t i = length; i < 12; i++)
-            assert(enc.salt[i] == 0xff);
-        assert(memcmp(tail, enc.salt + 12, sizeof(tail)) == 0);
-        assert(memcmp(buf.data, enc.salt, 32) == 0);
+            SS_CHECK(enc.salt[i] == 0xff);
+        SS_CHECK(std::memcmp(tail, enc.salt + 12, sizeof(tail)) == 0);
+        SS_CHECK(std::memcmp(buf.data, enc.salt, 32) == 0);
         seen |= 1u << (length - 6);
         crypto->ctx_release(&enc);
     }
     /* Probability of missing a length with unbiased sampling is < 4e-34. */
-    assert(seen == 0x7f);
+    SS_CHECK(seen == 0x7f);
     bfree(&buf);
     ppbloom_free();
     ss_free(crypto->cipher);
@@ -217,38 +207,38 @@ test_printable_salt_lengths(const char *method)
 
 /* Exercise empty first writes, exact wire overhead, fragmented input, tampering
  * and replay with the receiver's independent bloom filter. */
-static void
-test_printable_salt(const char *method, int enabled)
+void test_printable_salt(const char *method, int enabled)
 {
-    crypto_t *crypto = crypto_init("password", NULL, method);
-    assert(crypto != NULL);
+    crypto_t *crypto = crypto_init("password", nullptr, method);
+    SS_CHECK(crypto != nullptr);
     cipher_ctx_t enc, dec;
     crypto->ctx_init(crypto->cipher, &enc, 1);
     crypto->ctx_init(crypto->cipher, &dec, 0);
-    assert(enc.printable_salt == 0);
+    SS_CHECK(enc.printable_salt == 0);
     enc.printable_salt = enabled;
     uint8_t original[32];
-    memcpy(original, enc.salt, 32);
-    buffer_t buf = {0}, fragment = {0};
+    std::memcpy(original, enc.salt, 32);
+    buffer_t buf{};
+    buffer_t fragment{};
     balloc(&buf, 2048);
     balloc(&fragment, 2048);
-    assert(crypto->encrypt(&buf, &enc, 2048) == CRYPTO_OK);
-    assert(enc.init == 0 && buf.len == 0);
-    assert(memcmp(original, enc.salt, 32) == 0);
-    memcpy(buf.data, "payload", 7);
+    SS_CHECK(crypto->encrypt(&buf, &enc, 2048) == CRYPTO_OK);
+    SS_CHECK(enc.init == 0 && buf.len == 0);
+    SS_CHECK(std::memcmp(original, enc.salt, 32) == 0);
+    std::memcpy(buf.data, "payload", 7);
     buf.len = 7;
-    assert(crypto->encrypt(&buf, &enc, 2048) == CRYPTO_OK);
-    assert(buf.len == 32 + 2 + 32 + 7);
-    assert(memcmp(buf.data, enc.salt, 32) == 0);
-    assert(memcmp(original + 12, enc.salt + 12, 20) == 0);
+    SS_CHECK(crypto->encrypt(&buf, &enc, 2048) == CRYPTO_OK);
+    SS_CHECK(buf.len == 32 + 2 + 32 + 7);
+    SS_CHECK(std::memcmp(buf.data, enc.salt, 32) == 0);
+    SS_CHECK(std::memcmp(original + 12, enc.salt + 12, 20) == 0);
     if (enabled) {
         for (int i = 0; i < 6; i++)
-            assert(enc.salt[i] >= 0x20 && enc.salt[i] <= 0x7e);
+            SS_CHECK(enc.salt[i] >= 0x20 && enc.salt[i] <= 0x7e);
     } else {
-        assert(memcmp(original, enc.salt, 32) == 0);
+        SS_CHECK(std::memcmp(original, enc.salt, 32) == 0);
     }
     uint8_t wire[73];
-    memcpy(wire, buf.data, sizeof(wire));
+    std::memcpy(wire, buf.data, sizeof(wire));
     ppbloom_free();
     ppbloom_init(10000, 1e-15);
     for (size_t i = 0; i < sizeof(wire); i++) {
@@ -256,33 +246,33 @@ test_printable_salt(const char *method, int enabled)
         fragment.len = 1;
         int result = crypto->decrypt(&fragment, &dec, 2048);
         if (i + 1 < sizeof(wire)) {
-            assert(result == CRYPTO_NEED_MORE);
+            SS_CHECK(result == CRYPTO_NEED_MORE);
         } else {
-            assert(result == CRYPTO_OK);
-            assert(fragment.len == 7 && memcmp(fragment.data, "payload", 7) == 0);
+            SS_CHECK(result == CRYPTO_OK);
+            SS_CHECK(fragment.len == 7 && std::memcmp(fragment.data, "payload", 7) == 0);
         }
     }
-    memcpy(original, enc.salt, 32);
-    memcpy(buf.data, "next", 4);
+    std::memcpy(original, enc.salt, 32);
+    std::memcpy(buf.data, "next", 4);
     buf.len = 4;
-    assert(crypto->encrypt(&buf, &enc, 2048) == CRYPTO_OK);
-    assert(buf.len == 2 + 32 + 4);
-    assert(memcmp(original, enc.salt, 32) == 0);
-    assert(crypto->decrypt(&buf, &dec, 2048) == CRYPTO_OK);
-    assert(buf.len == 4 && memcmp(buf.data, "next", 4) == 0);
+    SS_CHECK(crypto->encrypt(&buf, &enc, 2048) == CRYPTO_OK);
+    SS_CHECK(buf.len == 2 + 32 + 4);
+    SS_CHECK(std::memcmp(original, enc.salt, 32) == 0);
+    SS_CHECK(crypto->decrypt(&buf, &dec, 2048) == CRYPTO_OK);
+    SS_CHECK(buf.len == 4 && std::memcmp(buf.data, "next", 4) == 0);
     crypto->ctx_release(&dec);
     crypto->ctx_init(crypto->cipher, &dec, 0);
-    memcpy(buf.data, wire, sizeof(wire));
+    std::memcpy(buf.data, wire, sizeof(wire));
     buf.len = sizeof(wire);
-    assert(crypto->decrypt(&buf, &dec, 2048) == CRYPTO_ERROR);
+    SS_CHECK(crypto->decrypt(&buf, &dec, 2048) == CRYPTO_ERROR);
     crypto->ctx_release(&dec);
     ppbloom_free();
     ppbloom_init(10000, 1e-15);
     crypto->ctx_init(crypto->cipher, &dec, 0);
-    memcpy(buf.data, wire, sizeof(wire));
+    std::memcpy(buf.data, wire, sizeof(wire));
     buf.data[sizeof(wire) - 1] ^= 1;
     buf.len = sizeof(wire);
-    assert(crypto->decrypt(&buf, &dec, 2048) == CRYPTO_ERROR);
+    SS_CHECK(crypto->decrypt(&buf, &dec, 2048) == CRYPTO_ERROR);
     crypto->ctx_release(&dec);
     crypto->ctx_release(&enc);
     bfree(&buf);
@@ -292,26 +282,30 @@ test_printable_salt(const char *method, int enabled)
     ss_free(crypto);
 }
 
-int
-main(void)
+} // namespace
+
+int main()
 {
     if (sodium_init() < 0) {
         return 1;
     }
 
     test_printable_salt_lengths("chacha20-ietf-poly1305");
+    std::printf("ok test_printable_salt_lengths chacha20-ietf-poly1305\n");
     test_printable_salt_lengths("aes-256-gcm");
+    std::printf("ok test_printable_salt_lengths aes-256-gcm\n");
     test_printable_salt("chacha20-ietf-poly1305", 0);
     test_printable_salt("chacha20-ietf-poly1305", 1);
     test_printable_salt("aes-256-gcm", 0);
     test_printable_salt("aes-256-gcm", 1);
-    test_crypto_md5();
-    test_crypto_derive_key();
-    test_crypto_hkdf();
-    test_crypto_hkdf_extract();
-    test_crypto_parse_key();
-    test_aead_repeat_salt_rejection_releases_context();
+    std::printf("ok test_printable_salt\n");
+    SS_RUN(test_crypto_md5);
+    SS_RUN(test_crypto_derive_key);
+    SS_RUN(test_crypto_hkdf);
+    SS_RUN(test_crypto_hkdf_extract);
+    SS_RUN(test_crypto_parse_key);
+    SS_RUN(test_aead_repeat_salt_rejection_releases_context);
 
-    assert(crypto_init("password", NULL, "aes-256-cfb") == NULL);
+    SS_CHECK(crypto_init("password", nullptr, "aes-256-cfb") == nullptr);
     return 0;
 }

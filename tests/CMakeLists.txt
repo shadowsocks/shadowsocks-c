@@ -117,26 +117,26 @@ if(Python3_Interpreter_FOUND)
 endif()
 
 # Shared-reference ownership and consuming pointer moves.
-ss_add_test(test_ref "test_ref.c" "")
+ss_add_test(test_ref "test_ref_cpp.cpp" "")
 
 # test_base64 - no external deps
 ss_add_test(test_base64
-    "test_base64.c;${PROJECT_SOURCE_DIR}/src/base64.cpp"
+    "test_base64_cpp.cpp;${PROJECT_SOURCE_DIR}/src/base64.cpp"
     "")
 
 # test_utils - needs sodium (for ss_malloc -> uses sodium in utils.cpp)
 ss_add_test(test_utils
-    "test_utils.c;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_utils_cpp.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 # test_json - standalone json parser
 ss_add_test(test_json
-    "test_json.c;${PROJECT_SOURCE_DIR}/src/json.cpp"
+    "test_json_cpp.cpp;${PROJECT_SOURCE_DIR}/src/json.cpp"
     "${SS_MATH_LIBRARY}")
 
 # test_ssurl - ss:// URI parsing (SIP002 and legacy)
 ss_add_test(test_ssurl
-    "test_ssurl.c;${PROJECT_SOURCE_DIR}/src/ssurl.cpp;${PROJECT_SOURCE_DIR}/src/base64.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_ssurl_cpp.cpp;${PROJECT_SOURCE_DIR}/src/ssurl.cpp;${PROJECT_SOURCE_DIR}/src/base64.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 # test_netutils - address parsing and resolver integration
@@ -146,12 +146,12 @@ set(TEST_NETUTILS_LIBS
     ss_cares
 )
 ss_add_test(test_netutils
-    "test_netutils.c;${PROJECT_SOURCE_DIR}/src/netutils.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_netutils_cpp.cpp;${PROJECT_SOURCE_DIR}/src/netutils.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_NETUTILS_LIBS}")
 
 # test_cache - expiration uses a platform monotonic clock
 ss_add_test(test_cache
-    "test_cache.c;${CMAKE_CURRENT_SOURCE_DIR}/reference/cache.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_cache_reference_cpp.cpp;${CMAKE_CURRENT_SOURCE_DIR}/reference/cache.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 # test_cache_cpp - fixed-capacity cache edge cases
@@ -164,7 +164,7 @@ ss_strict_warnings(test_cache_cpp.cpp ${CMAKE_CURRENT_SOURCE_DIR}/reference/cach
 set(TEST_PPBLOOM_LIBS "")
 list(APPEND TEST_PPBLOOM_LIBS bloom)
 ss_add_test(test_ppbloom
-    "test_ppbloom.c;${PROJECT_SOURCE_DIR}/src/ppbloom.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_ppbloom_cpp.cpp;${PROJECT_SOURCE_DIR}/src/ppbloom.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_PPBLOOM_LIBS};ss_sodium;${SS_MATH_LIBRARY}")
 
 if(SS_ENABLE_REGEX)
@@ -180,7 +180,7 @@ ss_add_test(test_rule_cpp
 # test_acl - ACL precedence and prefix matching
 set(TEST_ACL_LIBS ${TEST_RULE_LIBS})
 ss_add_test(test_acl
-    "test_acl.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_acl_cpp.cpp;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_ACL_LIBS}")
 
 endif()
@@ -213,7 +213,7 @@ set(SS_CRYPTO_TEST_SOURCES
 
 # test_buffer - needs sodium and mbedtls for crypto.cpp buffer functions
 ss_add_test(test_buffer
-    "test_buffer.c;${SS_CRYPTO_TEST_SOURCES}"
+    "test_buffer_cpp.cpp;${SS_CRYPTO_TEST_SOURCES}"
     "ss_sodium;;ss_mbedcrypto;ss_ev;${TEST_PPBLOOM_LIBS};blake3;${SS_MATH_LIBRARY}")
 
 # test_crypto - full crypto test
@@ -227,12 +227,12 @@ list(APPEND TEST_CRYPTO_LIBS bloom)
 # BLAKE3 backs the 2022 ciphers' key derivation
 list(APPEND TEST_CRYPTO_LIBS blake3)
 ss_add_test(test_crypto
-    "test_crypto.c;${SS_CRYPTO_TEST_SOURCES}"
+    "test_crypto_cpp.cpp;${SS_CRYPTO_TEST_SOURCES}"
     "${TEST_CRYPTO_LIBS};${SS_MATH_LIBRARY}")
 
 # test_aead2022 - Shadowsocks 2022 Edition (SIP022) ciphers
 ss_add_test(test_aead2022
-    "test_aead2022.c;${SS_CRYPTO_TEST_SOURCES}"
+    "test_aead2022_cpp.cpp;${SS_CRYPTO_TEST_SOURCES}"
     "${TEST_CRYPTO_LIBS};${SS_MATH_LIBRARY}")
 
 # test_crypto_aead_cpp - C++ AEAD codecs, differentially against aead.cpp
@@ -266,11 +266,11 @@ add_test(NAME test_ss_setup
 set_tests_properties(test_ss_setup PROPERTIES LABELS "integration")
 
 ss_add_test(test_ipset
-    "test_ipset.c;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_ipset_cpp.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 
 ss_add_test(test_process
-    "test_process.c;${PROJECT_SOURCE_DIR}/src/process.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_process_cpp.cpp;${PROJECT_SOURCE_DIR}/src/process.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "ss_sodium")
 set_tests_properties(test_process PROPERTIES TIMEOUT 20)
 
@@ -288,8 +288,16 @@ if(SS_ENABLE_REGEX)
     list(APPEND TEST_LITERAL_LIBS ss_pcre2)
 endif()
 ss_add_test(test_acl_literal
-    "test_acl_literal.c;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
+    "test_acl_literal_cpp.cpp;${PROJECT_SOURCE_DIR}/src/acl.cpp;${PROJECT_SOURCE_DIR}/src/ipset.cpp;${PROJECT_SOURCE_DIR}/src/rule.cpp;${PROJECT_SOURCE_DIR}/src/utils.cpp"
     "${TEST_LITERAL_LIBS}")
+
+# Tests ported from C build with the full C++ warning set. test_ipset_reference
+# is intentionally absent: it needs the pre-migration libipset archives.
+ss_strict_warnings(
+    test_acl_cpp.cpp test_acl_literal_cpp.cpp test_aead2022_cpp.cpp test_base64_cpp.cpp
+    test_buffer_cpp.cpp test_cache_reference_cpp.cpp test_crypto_cpp.cpp test_ipset_cpp.cpp
+    test_json_cpp.cpp test_netutils_cpp.cpp test_ppbloom_cpp.cpp test_process_cpp.cpp
+    test_ref_cpp.cpp test_ssurl_cpp.cpp test_utils_cpp.cpp)
 
 
 # Preloadable malloc counter for the allocation audit. It interposes the

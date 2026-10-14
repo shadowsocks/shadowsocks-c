@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 // Edge cases of the fixed-capacity cache (src/cache.cpp) beyond
-// test_cache.c, and proof that a full cache churns without allocating.
+// test_cache_reference_cpp.cpp, and proof that a full cache churns without allocating.
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
