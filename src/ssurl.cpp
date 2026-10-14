@@ -244,12 +244,14 @@ ss_url_parse(const char *uri, ss_url_t *url)
         return -1;
 
     /* The fragment is a human-readable tag and is not part of the config. */
+    // NOLINTNEXTLINE(bugprone-not-null-terminated-result): memchr searches a bounded span, no string is produced
     const char *hash = (const char *)memchr(body, '#', body_len);
     if (hash != NULL) {
         url->tag = percent_decode(hash + 1, body_len - (size_t)(hash - body) - 1);
         body_len = (size_t)(hash - body);
     }
 
+    // NOLINTNEXTLINE(bugprone-not-null-terminated-result): memchr searches a bounded span, no string is produced
     const char *query = (const char *)memchr(body, '?', body_len);
     size_t head_len   = query ? (size_t)(query - body) : body_len;
 

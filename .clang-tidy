@@ -12,7 +12,9 @@
 # reserved-identifier: the codebase uses _prefixed names and vendored
 # uthash.h/generated config.h trip them ~600 times) or produce false
 # positives with the event callback style (casting-through-void,
-# multi-level-implicit-pointer-conversion).
+# multi-level-implicit-pointer-conversion). dynamic-static-initializers
+# fires on every extern variable declaration in the C headers once they are
+# included from C++; none of them is defined or initialised in a header.
 Checks: >
   clang-analyzer-*,
   bugprone-*,
@@ -20,6 +22,7 @@ Checks: >
   -bugprone-assignment-in-if-condition,
   -bugprone-branch-clone,
   -bugprone-casting-through-void,
+  -bugprone-dynamic-static-initializers,
   -bugprone-easily-swappable-parameters,
   -bugprone-inc-dec-in-conditions,
   -bugprone-implicit-widening-of-multiplication-result,
