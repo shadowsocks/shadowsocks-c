@@ -1,7 +1,7 @@
 # clang-tidy configuration for shadowsocks-c project sources (src/ only).
 # Bundled sources under third_party/ and src/blake3/ are third-party code and
 # are excluded by the file regex used in CI:
-#   run-clang-tidy -p build '/(src/(core/|event/|relay/|crypto/|api/)?[^/]+\.(c|cpp)|tests/test_(core_[^/]+|event_cpp)\.cpp)$'
+#   run-clang-tidy -p build '/(src/(core/|event/|relay/|crypto/|api/)?[^/]+\.(c|cpp)|tests/test_(core_[^/]+|[a-z_]+_cpp)\.cpp)$'
 #
 # The header-only C++ core (src/core/*.hpp) is analysed through the
 # test_core_* translation units that include it.
@@ -39,4 +39,4 @@ Checks: >
   -clang-analyzer-security.insecureAPI.strcpy,
   -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling
 WarningsAsErrors: ''
-HeaderFilterRegex: '.*/src/([^/]+\.h|(core|event)/[^/]+\.hpp)$'
+HeaderFilterRegex: '.*/src/([^/]+\.h|(core|event|crypto)/[^/]+\.hpp)$'

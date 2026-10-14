@@ -62,11 +62,13 @@ function(ss_project_options target)
     endif()
 endfunction()
 
-# Extra warnings for code written as C++ from the start (src/core and its
-# tests).
-function(ss_strict_warnings target)
+# Extra warnings for source files written as C++ from the start (src/core,
+# src/event, src/crypto and their tests). Per file, so targets that also
+# compile converted C modules keep those at -Wall. Source properties are
+# directory-scoped: call this from the directory that defines the targets.
+function(ss_strict_warnings)
     if(NOT MSVC)
-        target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:-Wextra>
-            $<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wsign-compare -Wclass-memaccess>)
+        set_source_files_properties(${ARGN} PROPERTIES COMPILE_OPTIONS
+            "-Wextra;$<$<CXX_COMPILER_ID:GNU>:-Wsign-compare>;$<$<CXX_COMPILER_ID:GNU>:-Wclass-memaccess>")
     endif()
 endfunction()

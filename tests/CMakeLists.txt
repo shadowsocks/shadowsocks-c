@@ -60,12 +60,12 @@ endfunction()
 # C++ core (src/core): header-only ownership and allocation primitives.
 foreach(core_test result pool buffer arena fixed_map ownership)
     ss_add_test(test_core_${core_test} "test_core_${core_test}.cpp" "")
-    ss_strict_warnings(test_core_${core_test})
+    ss_strict_warnings(test_core_${core_test}.cpp)
 endforeach()
 
 # C++ event layer (src/event) over libuv.
 ss_add_test(test_event_cpp "test_event_cpp.cpp" "ss_uv")
-ss_strict_warnings(test_event_cpp)
+ss_strict_warnings(test_event_cpp.cpp)
 set_tests_properties(test_event_cpp PROPERTIES TIMEOUT 30)
 
 # C++ sources under src/ must not allocate on the heap (see the script).
@@ -207,6 +207,12 @@ ss_add_test(test_aead2022
     "test_aead2022.c;${SS_CRYPTO_TEST_SOURCES}"
     "${TEST_CRYPTO_LIBS};${SS_MATH_LIBRARY}")
 
+# test_crypto_aead_cpp - C++ AEAD codecs, differentially against aead.cpp
+ss_add_test(test_crypto_aead_cpp
+    "test_crypto_aead_cpp.cpp;${PROJECT_SOURCE_DIR}/src/crypto/aead.cpp;${SS_CRYPTO_TEST_SOURCES}"
+    "${TEST_CRYPTO_LIBS};${SS_MATH_LIBRARY}")
+ss_strict_warnings(test_crypto_aead_cpp.cpp ${PROJECT_SOURCE_DIR}/src/crypto/aead.cpp)
+
 # test_interop_rust - interoperability against shadowsocks-rust.
 # Skips itself when shadowsocks-rust or the built binaries are absent.
 add_test(NAME test_interop_rust
@@ -283,6 +289,11 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
         # Steady-state allocation audit (report-only until the C++ relay
         # lands; see tests/alloc_audit/measure_alloc.py).
         if(TARGET ss_alloc_audit)
+            # The C++ codecs must not allocate once initialised.
+            add_test(NAME alloc_steady_crypto_aead
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/check_steady.py
+                        --shim $<TARGET_FILE:ss_alloc_audit> -- $<TARGET_FILE:test_crypto_aead_cpp>)
+            set_tests_properties(alloc_steady_crypto_aead PROPERTIES LABELS "unit" TIMEOUT 60)
             add_test(NAME alloc_audit_report
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/alloc_audit/measure_alloc.py
                         --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}

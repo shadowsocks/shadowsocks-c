@@ -104,7 +104,15 @@ public:
     }
 
     Result &operator=(const Result &) = delete;
-    Result &operator=(Result &&)      = delete;
+
+    Result &operator=(Result &&other) noexcept(std::is_nothrow_move_constructible_v<T>)
+    {
+        if (this != &other) {
+            this->~Result();
+            std::construct_at(this, std::move(other));
+        }
+        return *this;
+    }
 
     ~Result()
     {
