@@ -47,7 +47,7 @@ typedef struct {
  * const profile_t EXAMPLE_PROFILE = {
  *  .remote_host = "example.com",
  *  .local_addr = "127.0.0.1",
- *  .method = "bf-cfb",
+ *  .method = "aes-256-gcm",
  *  .password = "barfoo!",
  *  .remote_port = 8338,
  *  .local_port = 1080,

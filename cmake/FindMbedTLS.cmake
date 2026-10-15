@@ -92,32 +92,6 @@ if(MBEDTLS_INCLUDE_DIR AND MBEDTLS_CRYPTO_LIBRARY)
     set(CMAKE_REQUIRED_INCLUDES ${MBEDTLS_INCLUDE_DIR})
     set(CMAKE_REQUIRED_LIBRARIES ${MBEDTLS_CRYPTO_LIBRARY})
 
-    # Check for required CFB mode support
-    check_c_source_compiles("
-        #include <mbedtls/cipher.h>
-        #if !defined(MBEDTLS_CIPHER_MODE_CFB)
-        #error CFB mode not supported
-        #endif
-        int main(void) { return 0; }
-    " MBEDTLS_HAS_CFB)
-
-    if(NOT MBEDTLS_HAS_CFB)
-        # Try mbedtls 3.x config path
-        check_c_source_compiles("
-            #include <mbedtls/build_info.h>
-            #include <mbedtls/cipher.h>
-            #if !defined(MBEDTLS_CIPHER_MODE_CFB)
-            #error CFB mode not supported
-            #endif
-            int main(void) { return 0; }
-        " MBEDTLS_HAS_CFB_V3)
-
-        if(NOT MBEDTLS_HAS_CFB_V3)
-            message(FATAL_ERROR "mbedTLS found but MBEDTLS_CIPHER_MODE_CFB is not enabled. "
-                "Please enable CFB mode in your mbedTLS configuration.")
-        endif()
-    endif()
-
     # Verify the headers and the runtime library agree on the version. A
     # mismatch silently corrupts the heap, so refuse to configure instead.
     if(NOT CMAKE_CROSSCOMPILING AND NOT DEFINED MBEDTLS_VERSION_CONSISTENT)
