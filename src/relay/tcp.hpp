@@ -24,6 +24,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <utility>
 
 #include "core/buffer.hpp"
 #include "core/pool.hpp"
@@ -80,9 +81,66 @@ class TcpRelay;
 inline constexpr std::size_t kRelayBuffer = SOCKET_BUF_SIZE + Method::kMaxOverhead;
 inline constexpr std::size_t kHandshakeBuffer = 1024;
 
+using RelayBuffer = FixedBuffer<kRelayBuffer>;
+
+// A relay buffer leased from the relay's shared pool only while it holds
+// bytes. An idle connection holds none, so the pages of its buffers are not
+// kept resident; a drained buffer goes back to the LIFO pool and the next
+// connection reuses the same warm pages. The pool has two buffers for every
+// connection slot, so a lease cannot fail.
+class LeasedBuffer {
+public:
+    explicit LeasedBuffer(ObjectPool<RelayBuffer> &pool) noexcept : pool_(&pool) {}
+
+    bool empty() const noexcept { return !buf_ || buf_->empty(); }
+    ConstBytes readable() const noexcept { return buf_ ? std::as_const(*buf_).readable() : ConstBytes{}; }
+    Bytes writable() noexcept { return lease() ? buf_->writable() : Bytes{}; }
+    bool commit(std::size_t n) noexcept { return n == 0 || (buf_ && buf_->commit(n)); }
+    bool consume(std::size_t n) noexcept
+    {
+        if (!buf_) {
+            return n == 0;
+        }
+        bool ok = buf_->consume(n);
+        trim();
+        return ok;
+    }
+    void compact() noexcept
+    {
+        if (buf_) {
+            buf_->compact();
+        }
+    }
+    void clear() noexcept { buf_.reset(); }
+    // Give the buffer back if it is empty.
+    void trim() noexcept
+    {
+        if (buf_ && buf_->empty()) {
+            buf_.reset();
+        }
+    }
+    bool leased() const noexcept { return static_cast<bool>(buf_); }
+
+private:
+    bool lease() noexcept
+    {
+        if (!buf_) {
+            auto b = pool_->acquire();
+            if (!b) {
+                return false;
+            }
+            buf_ = std::move(*b);
+        }
+        return true;
+    }
+
+    ObjectPool<RelayBuffer> *pool_;
+    PoolPtr<RelayBuffer> buf_;
+};
+
 class Connection : public event::Deadline {
 public:
-    explicit Connection(TcpRelay &relay) noexcept : relay_(&relay) {}
+    explicit Connection(TcpRelay &relay) noexcept;
     Connection(const Connection &)            = delete;
     Connection &operator=(const Connection &) = delete;
 
@@ -130,8 +188,9 @@ private:
     void update_interest() noexcept;
 
     enum class Pull : std::uint8_t { data, nothing, again, eof, error };
-    Pull pull(ss_socket_t fd, bool decode, FixedBuffer<kRelayBuffer> &dst, std::uint64_t *counter) noexcept;
-    Pull flush(ss_socket_t fd, FixedBuffer<kRelayBuffer> &src) noexcept;
+    Pull pull(ss_socket_t fd, bool decode, LeasedBuffer &dst, std::uint64_t *counter) noexcept;
+    Pull pull_into(ss_socket_t fd, bool decode, LeasedBuffer &dst, std::uint64_t *counter) noexcept;
+    Pull flush(ss_socket_t fd, LeasedBuffer &src) noexcept;
 
     bool client_kind() const noexcept;
 
@@ -141,8 +200,8 @@ private:
     event::Poll<Connection, &Connection::on_upstream> upstream_;
     event::CloseGroup closer_;
 
-    FixedBuffer<kRelayBuffer> to_upstream_;
-    FixedBuffer<kRelayBuffer> to_client_;
+    LeasedBuffer to_upstream_;
+    LeasedBuffer to_client_;
     FixedBuffer<kHandshakeBuffer> handshake_;
     Encoder enc_;
     Decoder dec_;
@@ -212,6 +271,8 @@ private:
     Resolver *resolver_ = nullptr;
     TcpConfig config_{};
 
+    // Declared before pool_ so that it outlives every connection's lease.
+    ObjectPool<RelayBuffer> buffers_;
     ObjectPool<Connection> pool_;
     Region owners_region_;
     std::span<PoolPtr<Connection> > owners_;

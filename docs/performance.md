@@ -56,30 +56,41 @@ The throughput differences are within the run-to-run spread, which is about
 RSS with 1,000 established, idle connections through ss-local and ss-server
 (aes-256-gcm):
 
-| | C server | C++ server | C local | C++ local |
+| | C server | C++ server (inline buffers) | C local | C++ local (inline buffers) |
 |---|---:|---:|---:|---:|
 | idle | 2,624 KiB | 2,992 KiB | 2,272 KiB | 2,576 KiB |
 | 1,000 connections | 60,256 KiB | 80,912 KiB | 54,416 KiB | 74,752 KiB |
 
-Each connection slot carries about 104 KiB of inline buffers, against roughly
-58 KiB that the C relay allocated on demand. The pool is reserved virtually at
-startup and only the touched pages of a slot become resident.
+Each connection slot used to carry about 104 KiB of inline buffers, against
+roughly 58 KiB that the C relay allocated on demand. The pool is reserved
+virtually at startup and only the touched pages of a slot become resident.
 
 The table above was taken on Apple Silicon, whose 16 KiB pages round every
 touched buffer up to a whole page. The same test on Linux (4 KiB pages, GCC,
-Alpine container, aes-256-gcm, one small request per connection) gives:
+Alpine container, aes-256-gcm, one small request per connection, then idle):
 
-| | C server | C++ server | C local | C++ local |
-|---|---:|---:|---:|---:|
-| idle | 1,380 KiB | 1,812 KiB | 1,248 KiB | 1,684 KiB |
-| 1,000 connections | 27,604 KiB | 37,248 KiB | 24,744 KiB | 34,236 KiB |
-| per connection | 26.2 KiB | 35.4 KiB | 23.5 KiB | 32.6 KiB |
+| per connection | C | C++, inline buffers | C++, leased buffers |
+|---|---:|---:|---:|
+| ss-server (Linux) | 26.2 KiB | 35.4 KiB | 27.2 KiB |
+| ss-local (Linux) | 23.5 KiB | 32.6 KiB | 24.4 KiB |
+| ss-server (macOS) | | 73.9 KiB | 42.2 KiB |
+| ss-local (macOS) | | 68.2 KiB | 36.4 KiB |
 
-So the fixed slots cost about 9 KiB per connection more than C on Linux.
-Construction does not zero-fill the buffers (a user-provided `FixedBuffer`
-constructor changed nothing), so the difference is page granularity across
-the separate inline buffers. A shared buffer pool with read backpressure
-would cut it; it is the main open trade-off of the rewrite.
+The two relay buffers of a connection (one per direction, 16 KiB each) now
+come from a shared `ObjectPool` with two buffers per connection slot. A
+connection leases one only while bytes wait in it and gives it back as soon
+as it drains, so idle connections hold none, and the LIFO free list hands the
+same warm pages to the next busy connection. Because the pool covers every
+direction of every slot, a lease never fails and reads never stall on it. The
+slot itself shrank from 104 KiB to 68 KiB; most of the rest is the AEAD
+decoder's chunk buffer, which only touches the pages a chunk lands in.
+
+Throughput with leased buffers (`stress_test.py --size 1000 --cipher
+aes-256-gcm`, alternating runs): median 7,180 against 6,880 Mbps with inline
+buffers on Linux (12 runs each), 5,367 against 5,697 Mbps on macOS (16 runs
+each). Both gaps are inside the run-to-run spread of 4,300–8,100 Mbps.
+`FixedBuffer` has a user-provided constructor, so a lease does not zero-fill
+16 KiB; without it the pooled build was about 12% slower.
 
 ### UDP
 

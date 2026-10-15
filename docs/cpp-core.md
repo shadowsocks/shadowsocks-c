@@ -97,7 +97,7 @@ Mbed TLS lacking it, `mbedtls_gcm_setkey` may still allocate.
 
 | Setting | Default | Pool |
 |---|---|---|
-| `--max-connections` / `max_connections` | 1024 | TCP connections, about 104 KiB each |
+| `--max-connections` / `max_connections` | 1024 | TCP connections: a 68 KiB slot each, plus two 16 KiB relay buffers leased from a shared pool while data is in flight |
 | `--max-udp-sessions` / `max_udp_sessions` | 256 (ss-server 512) | UDP associations; the least recently used is dropped when full |
 | `--max-dns-queries` / `max_dns_queries` | the connection limit (ss-server +64) | DNS lookups in flight |
 

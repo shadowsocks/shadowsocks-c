@@ -33,6 +33,10 @@ class FixedBuffer {
     static_assert(N > 0 && N <= UINT32_MAX);
 
 public:
+    // User-provided so that value-initialising a buffer (a pool lease, a
+    // variant alternative) does not zero-fill the storage on every use.
+    FixedBuffer() noexcept {}
+
     constexpr std::size_t capacity() const noexcept { return N; }
     constexpr std::size_t size() const noexcept { return len_; }
     constexpr bool empty() const noexcept { return len_ == 0; }

@@ -51,6 +51,11 @@ std::span<std::uint8_t> bytes_of(std::span<std::byte> b) noexcept
     return { reinterpret_cast<std::uint8_t *>(b.data()), b.size() };
 }
 
+std::span<const std::uint8_t> bytes_of(std::span<const std::byte> b) noexcept
+{
+    return { reinterpret_cast<const std::uint8_t *>(b.data()), b.size() };
+}
+
 bool loopback_v4(const sockaddr *addr) noexcept
 {
     return addr->sa_family == AF_INET
@@ -126,6 +131,7 @@ Status TcpRelay::init(event::Loop &loop, Method &method, const TcpConfig &config
     if (acl.match_host == nullptr || acl.mode == nullptr || acl.outbound_blocked == nullptr) {
         config_.acl = false;
     }
+    SS_TRY(buffers_.reserve(2 * config.max_connections));
     SS_TRY(pool_.reserve(config.max_connections));
     using Owner = PoolPtr<Connection>;
     SS_TRY_ASSIGN(region, Region::reserve(config.max_connections * sizeof(Owner), alignof(Owner)));
@@ -142,7 +148,8 @@ Status TcpRelay::init(event::Loop &loop, Method &method, const TcpConfig &config
     idle_list_.set_timeout(std::max<std::uint64_t>(MIN_TCP_IDLE_TIMEOUT, timeout) * 1000);
     SS_TRY(timer_.open(loop, *this));
     own_closed_ = false;
-    LOGI("tcp: up to %u connections (%zu KiB each)", config.max_connections, sizeof(Connection) / 1024);
+    LOGI("tcp: up to %u connections (%zu KiB each, plus two %zu KiB buffers leased while data is in flight)",
+         config.max_connections, sizeof(Connection) / 1024, sizeof(RelayBuffer) / 1024);
     return {};
 }
 
@@ -394,6 +401,13 @@ void Connection::begin_close(CloseCompletion done) noexcept
     client_.close(closer_);
     upstream_.close(closer_);
     closer_.seal();
+}
+
+Connection::Connection(TcpRelay &relay) noexcept
+    : relay_(&relay)
+    , to_upstream_(relay.buffers_)
+    , to_client_(relay.buffers_)
+{
 }
 
 Flow Connection::close() noexcept
@@ -987,7 +1001,7 @@ Flow Connection::connected() noexcept
     return Flow::proceed;
 }
 
-Connection::Pull Connection::flush(ss_socket_t fd, FixedBuffer<kRelayBuffer> &src) noexcept
+Connection::Pull Connection::flush(ss_socket_t fd, LeasedBuffer &src) noexcept
 {
     auto s = send_some(fd, bytes_of(src.readable()));
     if (!s) {
@@ -1003,11 +1017,21 @@ Connection::Pull Connection::flush(ss_socket_t fd, FixedBuffer<kRelayBuffer> &sr
     return src.empty() ? Pull::data : Pull::again;
 }
 
-Connection::Pull Connection::pull(ss_socket_t fd, bool decode, FixedBuffer<kRelayBuffer> &dst,
-                                  std::uint64_t *counter) noexcept
+Connection::Pull Connection::pull(ss_socket_t fd, bool decode, LeasedBuffer &dst, std::uint64_t *counter) noexcept
+{
+    Pull p = pull_into(fd, decode, dst, counter);
+    dst.trim(); // nothing arrived: do not hold on to the lease
+    return p;
+}
+
+Connection::Pull Connection::pull_into(ss_socket_t fd, bool decode, LeasedBuffer &dst,
+                                       std::uint64_t *counter) noexcept
 {
     dst.compact();
     auto out = bytes_of(dst.writable());
+    if (out.empty() && !dst.leased()) {
+        return Pull::error; // the pool has a buffer for every direction, so this cannot happen
+    }
     std::size_t limit;
     if (decode) {
         // Hand out plaintext the decoder kept back before reading more.
