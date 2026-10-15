@@ -146,6 +146,7 @@ test_read_jconf_copies_out_of_the_parse_tree()
     // A second read replaces the first one.
     write_config(path, "{\"server\":\"10.0.0.1:1\",\"method\":\"aes-256-gcm\",\"password\":\"x\"}");
     conf = read_jconf(path);
+    SS_CHECK(conf != nullptr);
     SS_CHECK(conf->remote_num == 1);
     SS_CHECK(same(conf->remote_addr[0].host, "10.0.0.1") && same(conf->remote_addr[0].port, "1"));
     SS_CHECK(same(conf->method, "aes-256-gcm"));
@@ -171,6 +172,7 @@ test_read_jconf_dense_file_fits()
     std::fclose(f);
 
     jconf_t *conf = read_jconf(path);
+    SS_CHECK(conf != nullptr);
     SS_CHECK(same(conf->method, "aes-128-gcm"));
     SS_CHECK(same(conf->remote_addr[0].host, "h"));
     std::remove(path);
