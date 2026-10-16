@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "crypto/keys.hpp"
+#include "crypto/mbedtls_compat.hpp"
 #include "ppbloom.h"
 #include "utils.h"
 
@@ -25,7 +26,7 @@ Status Method::init(const char *method, const char *password, const char *key, R
     if (method == nullptr) {
         return fail(Errc::config);
     }
-    if (sodium_init() == -1) {
+    if (sodium_init() == -1 || crypto::mbed::init() != 0) {
         return fail(Errc::crypto);
     }
     role_ = role;

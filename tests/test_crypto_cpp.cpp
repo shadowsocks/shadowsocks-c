@@ -7,6 +7,7 @@
 
 #include <sodium.h>
 
+#include "crypto/mbedtls_compat.hpp"
 #include "test_helpers.hpp"
 
 #include "crypto.h"
@@ -286,7 +287,7 @@ void test_printable_salt(const char *method, int enabled)
 
 int main()
 {
-    if (sodium_init() < 0) {
+    if (sodium_init() < 0 || ss::crypto::mbed::init() != 0) {
         return 1;
     }
 

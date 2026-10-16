@@ -353,6 +353,7 @@ void test_no_heap_in_steady_state()
 int main()
 {
     SS_CHECK(sodium_init() != -1);
+    SS_CHECK(ss::crypto::mbed::init() == 0);
     SS_RUN(test_hkdf_rfc5869);
     SS_RUN(test_hkdf_matches_c);
     SS_RUN(test_lookup);

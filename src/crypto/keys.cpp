@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <cstring>
 
-#include <mbedtls/md5.h>
 #include <sodium.h>
 
 #include "base64.h"
@@ -26,18 +25,18 @@ bool derive_key(const char *password, std::span<std::uint8_t> key) noexcept
     }
     const std::size_t len = std::strlen(password);
     std::uint8_t digest[16];
-    mbedtls_md5_context md5;
+    mbed::md5_context md5;
     std::size_t at = 0;
     bool ok        = true;
     for (bool first = true; at < key.size(); first = false) {
-        mbedtls_md5_init(&md5);
+        mbed::md5_init(&md5);
         ok = ok && mbed::md5_starts(&md5) == 0;
         if (!first) {
             ok = ok && mbed::md5_update(&md5, digest, sizeof(digest)) == 0;
         }
         ok = ok && mbed::md5_update(&md5, reinterpret_cast<const unsigned char *>(password), len) == 0
              && mbed::md5_finish(&md5, digest) == 0;
-        mbedtls_md5_free(&md5);
+        mbed::md5_free(&md5);
         std::size_t n = std::min(sizeof(digest), key.size() - at);
         std::memcpy(key.data() + at, digest, n);
         at += n;

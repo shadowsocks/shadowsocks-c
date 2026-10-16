@@ -12,6 +12,7 @@
 
 #include "alloc_audit/alloc_probe.hpp"
 #include "crypto/aead2022.hpp"
+#include "crypto/mbedtls_compat.hpp"
 #include "test_helpers.hpp"
 
 #include "aead.h"
@@ -423,6 +424,7 @@ void test_no_heap_in_steady_state()
 int main()
 {
     SS_CHECK(sodium_init() != -1);
+    SS_CHECK(ss::crypto::mbed::init() == 0);
     SS_RUN(test_methods);
     SS_RUN(test_no_heap_in_steady_state);
     return 0;
