@@ -298,8 +298,11 @@ Status UdpRelay::init(event::Loop &loop, Method &method, const UdpConfig &config
     if (config.kind == Kind::server) {
         if (method.psk() != nullptr) {
             // An entry evicted from shared_ stays alive while a relay
-            // session still references it (at most one per session).
-            SS_TRY(shared_pool_.reserve(config.max_sessions_2022 + config.max_sessions));
+            // session still references it (one per session, closing ones
+            // included); pending DNS queries hold one too, and a new session
+            // holds a slot while its first packet is checked.
+            SS_TRY(shared_pool_.reserve(config.max_sessions_2022 + 2 * config.max_sessions
+                                        + config.max_pending_dns + 1));
             SS_TRY(shared_.reserve(config.max_sessions_2022, seed ^ 0x9E3779B97F4A7C15ULL));
         }
         SS_TRY(pending_.reserve(config.max_pending_dns));
@@ -461,9 +464,6 @@ UdpSession *UdpRelay::session_for(std::uint8_t listener, const sockaddr_storage 
     if (verbose) {
         LOGI("[%s] [udp] cache miss", config_.label);
     }
-    if (sessions_.full()) {
-        (void)sessions_.pop_oldest(); // closes the least recently used session
-    }
     auto fd = open_upstream_socket(family);
     if (!fd) {
         return nullptr;
@@ -482,6 +482,11 @@ UdpSession *UdpRelay::session_for(std::uint8_t listener, const sockaddr_storage 
     s.key_     = raw;
     s.key_len_ = static_cast<std::uint8_t>(raw.size());
     (void)s.socket_.want(event::readable);
+    // Evict only once the replacement exists, so a failure above loses no
+    // live mapping.
+    if (sessions_.full()) {
+        (void)sessions_.pop_oldest(); // closes the least recently used session
+    }
     auto inserted = sessions_.emplace(*key, std::move(*session));
     if (!inserted) {
         return nullptr; // the PoolPtr went out of scope: closed again
@@ -568,17 +573,38 @@ void UdpRelay::client_packet(Listener &listener, const sockaddr_storage &from, s
     }
 }
 
-RefPtr<Shared2022> UdpRelay::shared_for(const std::array<std::uint8_t, crypto::kSessionIdLen> &id) noexcept
+RefPtr<Shared2022> UdpRelay::shared_find(const std::array<std::uint8_t, crypto::kSessionIdLen> &id) noexcept
 {
     auto key = FixedKey<crypto::kSessionIdLen>::from(std::as_bytes(std::span(id)));
     if (!key) {
         return nullptr;
     }
-    std::uint64_t now = now_secs();
     if (RefPtr<Shared2022> *found = shared_.find(*key)) {
-        (*found)->last_used = now;
+        (*found)->last_used = now_secs();
         return *found;
     }
+    return nullptr;
+}
+
+RefPtr<Shared2022> UdpRelay::shared_new() noexcept
+{
+    auto slot = shared_pool_.acquire(*this);
+    if (!slot) {
+        return nullptr;
+    }
+    Shared2022 *raw = slot->release(); // the references own it from here
+    raw->last_used  = now_secs();
+    return RefPtr<Shared2022>(raw);
+}
+
+bool UdpRelay::shared_insert(const std::array<std::uint8_t, crypto::kSessionIdLen> &id,
+                             const RefPtr<Shared2022> &ref) noexcept
+{
+    auto key = FixedKey<crypto::kSessionIdLen>::from(std::as_bytes(std::span(id)));
+    if (!key) {
+        return false;
+    }
+    std::uint64_t now = now_secs();
     // Forget client sessions idle for longer than the TTL (oldest first).
     while (RefPtr<Shared2022> *oldest = shared_.oldest()) {
         if ((*oldest)->last_used + kTtl2022 > now) {
@@ -589,23 +615,26 @@ RefPtr<Shared2022> UdpRelay::shared_for(const std::array<std::uint8_t, crypto::k
     if (shared_.full()) {
         (void)shared_.pop_oldest(); // relay sessions still using it keep it alive
     }
-    auto slot = shared_pool_.acquire(*this);
-    if (!slot) {
-        return nullptr;
-    }
-    Shared2022 *raw = slot->release(); // the references own it from here
-    raw->last_used  = now;
-    RefPtr<Shared2022> ref(raw);
-    if (!shared_.emplace(*key, ref)) {
-        return nullptr;
-    }
-    return ref;
+    return shared_.emplace(*key, ref).has_value();
 }
 
 void UdpRelay::server_packet(Listener &listener, const sockaddr_storage &from, std::span<std::uint8_t> packet) noexcept
 {
     if (config_.tx != nullptr) {
         *config_.tx += packet.size();
+    }
+    if (config_.acl) {
+        char peer[INET6_ADDRSTRLEN] = {};
+        const void *raw = from.ss_family == AF_INET
+                              ? static_cast<const void *>(&reinterpret_cast<const sockaddr_in *>(&from)->sin_addr)
+                              : static_cast<const void *>(&reinterpret_cast<const sockaddr_in6 *>(&from)->sin6_addr);
+        ss_inet_ntop(from.ss_family, raw, peer, sizeof(peer));
+        if (peer[0] != '\0' && config_.acl_hooks.peer_denied(peer)) {
+            if (verbose) {
+                LOGI("[udp] access denied from %s", peer);
+            }
+            return;
+        }
     }
     Result<std::size_t> opened = fail(Errc::config);
     RefPtr<Shared2022> shared;
@@ -614,10 +643,20 @@ void UdpRelay::server_packet(Listener &listener, const sockaddr_storage &from, s
     } else if (const crypto::Psk *psk = method_->psk()) {
         auto pkt = crypto::udp2022_decrypt(*psk, packet, out_);
         if (pkt) {
-            shared = shared_for(pkt->session_id);
+            // A new client session enters the table only once its first
+            // packet passes the timestamp and replay checks, so replayed
+            // stale packets cannot evict live sessions.
+            shared     = shared_find(pkt->session_id);
+            bool fresh = !shared;
+            if (fresh) {
+                shared = shared_new();
+            }
             if (shared) {
                 opened = crypto::udp2022_accept(Role::server, shared->state, *pkt, out_,
                                                 static_cast<std::uint64_t>(std::time(nullptr)));
+                if (opened && fresh && !shared_insert(pkt->session_id, shared)) {
+                    opened = fail(Errc::exhausted);
+                }
             }
         }
     }
@@ -653,6 +692,12 @@ void UdpRelay::server_packet(Listener &listener, const sockaddr_storage &from, s
         } else {
             if (!validate_hostname(target.host, static_cast<int>(std::strlen(target.host)))) {
                 LOGE("[udp] invalid host name");
+                return;
+            }
+            if (config_.acl && config_.acl_hooks.outbound_blocked(target.host) == 1) {
+                if (verbose) {
+                    LOGI("[udp] outbound blocked %s", target.host);
+                }
                 return;
             }
             // Hold the payload until the name resolves.
@@ -699,6 +744,12 @@ void UdpRelay::resolved(const ResolveCallback &cb, const sockaddr *address) noex
 void UdpRelay::server_forward(std::uint8_t listener, const sockaddr_storage &client, const sockaddr *target,
                               RefPtr<Shared2022> shared, std::span<const std::uint8_t> payload) noexcept
 {
+    if (config_.acl && config_.acl_hooks.target_blocked(target)) {
+        if (verbose) {
+            LOGI("[udp] outbound blocked");
+        }
+        return;
+    }
     UdpSession *session = session_for(listener, client, target->sa_family);
     if (session == nullptr) {
         return;

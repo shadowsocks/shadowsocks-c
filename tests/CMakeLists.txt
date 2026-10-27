@@ -398,6 +398,14 @@ if(SS_BUILD_EXECUTABLES AND NOT CMAKE_CROSSCOMPILING)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_limits.py
                     --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
         set_tests_properties(test_limits PROPERTIES LABELS "integration" TIMEOUT 60)
+        add_test(NAME test_server_acl
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_server_acl.py
+                    --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+        set_tests_properties(test_server_acl PROPERTIES LABELS "integration" TIMEOUT 90)
+        add_test(NAME test_half_close
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/test_half_close.py
+                    --bin ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
+        set_tests_properties(test_half_close PROPERTIES LABELS "integration" TIMEOUT 90)
         add_test(NAME test_tunnel_interop
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tunnel_interop.py ${SS_TUNNEL_INTEROP_ARGS})
         set_tests_properties(test_tunnel_interop PROPERTIES LABELS "integration" TIMEOUT 300)

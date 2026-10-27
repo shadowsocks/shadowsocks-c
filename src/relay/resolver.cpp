@@ -37,12 +37,17 @@ Status Resolver::init(event::Loop &loop, const char *nameservers, bool ipv6_firs
     if (status != ARES_SUCCESS) {
         LOGE("c-ares error: %s", ares_strerror(status));
         channel_ = nullptr;
+        ares_library_cleanup();
         return fail(Errc::config);
     }
-    if (nameservers != nullptr && ares_set_servers_ports_csv(channel_, nameservers) != ARES_SUCCESS) {
-        LOGE("failed to set nameservers %s", nameservers);
+    auto abandon = [this] {
         ares_destroy(channel_);
         channel_ = nullptr;
+        ares_library_cleanup();
+    };
+    if (nameservers != nullptr && ares_set_servers_ports_csv(channel_, nameservers) != ARES_SUCCESS) {
+        LOGE("failed to set nameservers %s", nameservers);
+        abandon();
         return fail(Errc::config);
     }
     loop_       = &loop;
@@ -50,7 +55,10 @@ Status Resolver::init(event::Loop &loop, const char *nameservers, bool ipv6_firs
     for (Watch &w : watches_) {
         w.owner = this;
     }
-    SS_TRY(timer_.open(loop, *this));
+    if (Status opened = timer_.open(loop, *this); !opened) {
+        abandon();
+        return opened;
+    }
     return {};
 }
 
@@ -89,6 +97,9 @@ void Resolver::on_host(void *arg, int status, int, hostent *he) noexcept
     } else if (verbose && status != ARES_EDESTRUCTION) {
         LOGI("failed to lookup address: %s", ares_strerror(status));
     }
+    if (status == ARES_EDESTRUCTION || status == ARES_ECANCELLED) {
+        q->cancelled = true;
+    }
     q->owner->finish(q, status);
 }
 
@@ -99,7 +110,8 @@ void Resolver::finish(Query *q, int status) noexcept
     }
     PoolPtr<Query> owned = queries_.adopt(q);
     const sockaddr *best = nullptr;
-    if (status != ARES_EDESTRUCTION) {
+    (void)status;
+    if (!q->cancelled) {
         if (ipv6_first_) {
             best = q->has6 ? reinterpret_cast<const sockaddr *>(&q->v6)
                            : (q->has4 ? reinterpret_cast<const sockaddr *>(&q->v4) : nullptr);

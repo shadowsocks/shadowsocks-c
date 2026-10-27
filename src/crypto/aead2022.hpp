@@ -54,6 +54,12 @@ struct Psk {
     Aead2022Spec spec;
     std::array<std::uint8_t, kMaxKey> bytes{};
 
+    Psk() noexcept = default;
+    Psk(const Aead2022Spec &s, const std::array<std::uint8_t, kMaxKey> &b) noexcept : spec(s), bytes(b) {}
+    Psk(const Psk &) noexcept            = default;
+    Psk &operator=(const Psk &) noexcept = default;
+    ~Psk() { sodium_memzero(bytes.data(), bytes.size()); }
+
     std::size_t size() const noexcept { return spec.aead.key_len; }
     std::span<const std::uint8_t> key() const noexcept { return { bytes.data(), size() }; }
     bool chacha() const noexcept { return spec.aead.kind == AeadKind::chacha20_poly1305; }
@@ -112,6 +118,12 @@ private:
 
 class Aead2022TcpDecryptor {
 public:
+    Aead2022TcpDecryptor() noexcept = default;
+    Aead2022TcpDecryptor(const Aead2022TcpDecryptor &) = delete;
+    Aead2022TcpDecryptor &operator=(const Aead2022TcpDecryptor &) = delete;
+    // Chunks are decrypted in place: the buffer held plaintext.
+    ~Aead2022TcpDecryptor() { sodium_memzero(buffer_.storage().data(), buffer_.storage().size()); }
+
     // A client decryptor checks the response echoes `request_salt`; a server
     // decryptor rejects salts already in `pool` (which may be null in tests).
     Status init(const Psk &psk, Role role, std::span<const std::uint8_t> request_salt = {},
@@ -165,6 +177,13 @@ struct UdpSession2022 {
     std::uint64_t rx_highest = 0;
     std::array<std::uint8_t, kUdpWindowBits / 8> rx_window{};
     bool rx_ready = false;
+
+    // The peer session heard from before rx_id, so a peer that starts a new
+    // session cannot have its old packets replayed into a fresh window.
+    std::array<std::uint8_t, kSessionIdLen> prev_id{};
+    std::uint64_t prev_highest = 0;
+    std::array<std::uint8_t, kUdpWindowBits / 8> prev_window{};
+    bool prev_ready = false;
 
     // Server side: the client session ID replies are addressed to.
     std::array<std::uint8_t, kSessionIdLen> peer_id{};

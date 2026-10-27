@@ -226,6 +226,10 @@ void usage(void);
 void cli_version(void);
 void cli_error(const char *message, int option, const char *token) __attribute__((noreturn));
 void daemonize(const char *path);
+/* After daemonize(): the daemon is serving, so the starting process may
+ * exit successfully (it fails if the daemon exits first). A no-op without
+ * daemonize(). */
+void daemon_ready(void);
 char *ss_strndup(const char *s, size_t n);
 #ifdef HAVE_SETRLIMIT
 int set_nofile(int nofile);

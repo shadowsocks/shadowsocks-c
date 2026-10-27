@@ -164,14 +164,22 @@ static ss::relay::Resolver *stat_resolver = NULL;
 static void stat_resolved(const ss::relay::ResolveCallback &cb, const sockaddr *address) noexcept
 {
     char *message = (char *)cb.ctx;
+    // One socket for the process's life: ss-manager tells who sent a
+    // datagram by the owner of its source socket, which must still exist
+    // when the manager looks.
+    static int stat_fd[2] = { -1, -1 }; // AF_INET, AF_INET6
     if (address) {
-        int fd = ss_socket(address->sa_family, SOCK_DGRAM, 0);
+        int &fd = stat_fd[address->sa_family == AF_INET6 ? 1 : 0];
+        if (fd == -1) {
+            fd = ss_socket(address->sa_family, SOCK_DGRAM, 0);
+            if (fd != -1) {
+                setnonblocking(fd);
+            }
+        }
         if (fd != -1) {
-            setnonblocking(fd);
             size_t length = strlen(message) + 1;
             if (sendto(fd, message, length, 0, address, get_sockaddr_len((struct sockaddr *)address)) != (ssize_t)length)
                 ERROR("stat_sendto");
-            ss_socket_close(fd);
         }
     }
     free(message); // heap-ok: one stats datagram every few seconds
@@ -180,7 +188,7 @@ static void stat_resolved(const ss::relay::ResolveCallback &cb, const sockaddr *
 static void
 stat_update_cb(void *) noexcept
 {
-    struct sockaddr_un svaddr, claddr;
+    struct sockaddr_un svaddr;
     int sfd = -1;
     size_t msgLen;
     char resp[SOCKET_BUF_SIZE];
@@ -204,24 +212,13 @@ stat_update_cb(void *) noexcept
             return;
         }
 
-        memset(&claddr, 0, sizeof(struct sockaddr_un));
-        claddr.sun_family = AF_UNIX;
-        snprintf(claddr.sun_path, sizeof(claddr.sun_path), "/tmp/shadowsocks.%s", remote_port);
-
-        unlink(claddr.sun_path);
-
-        if (bind(sfd, (struct sockaddr *)&claddr, sizeof(struct sockaddr_un)) == -1) {
-            ERROR("stat_bind");
-            ss_socket_close(sfd);
-            return;
-        }
-
+        // The manager never answers a stat datagram, so the socket stays
+        // unnamed: no fixed path in /tmp for anyone to race.
         memset(&svaddr, 0, sizeof(struct sockaddr_un));
         svaddr.sun_family = AF_UNIX;
         if (strlen(manager_addr) >= sizeof(svaddr.sun_path)) {
             LOGE("manager unix socket path is too long");
             ss_socket_close(sfd);
-            unlink(claddr.sun_path);
             return;
         }
         strncpy(svaddr.sun_path, manager_addr, sizeof(svaddr.sun_path) - 1);
@@ -229,11 +226,8 @@ stat_update_cb(void *) noexcept
         if (sendto(sfd, resp, strlen(resp) + 1, 0, (struct sockaddr *)&svaddr,
                    sizeof(struct sockaddr_un)) != (ssize_t)msgLen) {
             ERROR("stat_sendto");
-            ss_socket_close(sfd);
-            return;
         }
-
-        unlink(claddr.sun_path);
+        ss_socket_close(sfd);
     } else {
         uint16_t port;
         if (parse_numeric_port(ip_addr.port, &port) == 0) {
@@ -1076,7 +1070,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             break;
         case GETOPT_VAL_ACL:
             LOGI("initializing acl...");
-            acl = !init_acl(optarg);
+            if (init_acl(optarg) != 0) {
+                LOGE("failed to load the ACL file %s", optarg);
+                FATAL("invalid ACL");
+            }
+            acl = 1;
             break;
         case GETOPT_VAL_MANAGER_ADDRESS:
             manager_addr = optarg;
@@ -1317,7 +1315,11 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         }
         if (acl == 0 && conf->acl != NULL) {
             LOGI("initializing acl...");
-            acl = !init_acl(conf->acl);
+            if (init_acl(conf->acl) != 0) {
+                LOGE("failed to load the ACL file %s", conf->acl);
+                FATAL("invalid ACL");
+            }
+            acl = 1;
         }
     }
 
@@ -1523,6 +1525,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             len = strlen(server_str);
         }
 
+        set_plugin_user(user); // it drops root along with us
         int err = start_plugin(plugin, plugin_opts, server_str,
                                plugin_port, plugin_host, server_port,
 #ifdef __MINGW32__
@@ -1634,6 +1637,10 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         udp_config.label        = remote_port != NULL ? remote_port : "";
         udp_config.tx           = &tx;
         udp_config.rx           = &rx;
+        udp_config.acl          = acl != 0;
+        udp_config.acl_hooks.match_host       = &acl_match_host;
+        udp_config.acl_hooks.mode             = &get_acl_mode;
+        udp_config.acl_hooks.outbound_blocked = &outbound_block_match_host;
         if (is_bind_local_addr) {
             udp_config.bind_v4 = &local_addr_v4;
             udp_config.bind_v6 = &local_addr_v6;
@@ -1692,6 +1699,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     }
 #endif
 
+    daemon_ready();
     // start ev loop
     ss::heap_seal();
     {

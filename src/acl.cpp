@@ -50,6 +50,24 @@ static struct ss_ipset outbound_block_list_ipv4;
 static struct ss_ipset outbound_block_list_ipv6;
 static rule_list_t outbound_block_list_rules;
 
+/*
+ * Parse an address for ACL lookups. An IPv4-mapped IPv6 address
+ * (::ffff:a.b.c.d) reaches the IPv4 host on a dual-stack socket, so it is
+ * matched against the IPv4 lists.
+ */
+static int
+acl_ip_init(struct ss_ip *addr, const char *text)
+{
+    static const uint8_t mapped_prefix[12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff };
+    int err = ss_ip_init(addr, text);
+    if (!err && addr->version == 6 && memcmp(addr->bytes, mapped_prefix, sizeof(mapped_prefix)) == 0) {
+        memmove(addr->bytes, addr->bytes + 12, 4);
+        addr->version = 4;
+        return 1;
+    }
+    return err;
+}
+
 static int
 parse_addr_cidr(const char *str, char *host, size_t host_len, int *cidr)
 {
@@ -116,14 +134,8 @@ init_acl(const char *path)
         return -1;
     }
 
-    // initialize ipset
-
-    ss_ipset_clear(&white_list_ipv4);
-    ss_ipset_clear(&white_list_ipv6);
-    ss_ipset_clear(&black_list_ipv4);
-    ss_ipset_clear(&black_list_ipv6);
-    ss_ipset_clear(&outbound_block_list_ipv4);
-    ss_ipset_clear(&outbound_block_list_ipv6);
+    // Start from nothing: a reload must not keep the previous lists or mode.
+    free_acl();
 
 
     struct ss_ipset *list_ipv4  = &black_list_ipv4;
@@ -203,16 +215,33 @@ init_acl(const char *path)
             int cidr;
             if (parse_addr_cidr(line, host, sizeof(host), &cidr) == -1) {
                 LOGE("invalid ACL entry: %s", line);
-                continue;
+                fclose(f);
+                free_acl();
+                return -1;
             }
 
             struct ss_ip addr;
-            int err = ss_ip_init(&addr, host);
+            int err = acl_ip_init(&addr, host);
+            if (err == 1) {
+                // ::ffff:a.b.c.d/N is the IPv4 prefix a.b.c.d/(N-96)
+                if (cidr >= 0 && cidr < 96) {
+                    LOGE("invalid ACL IPv4-mapped CIDR: %s", line);
+                    fclose(f);
+                    free_acl();
+                    return -1;
+                }
+                if (cidr >= 96) {
+                    cidr -= 96;
+                }
+                err = 0;
+            }
             if (!err) {
                 if (addr.version == 4) {
                     if (cidr > 32 || cidr == -2) {
                         LOGE("invalid ACL IPv4 CIDR: %s", line);
-                        continue;
+                        fclose(f);
+                        free_acl();
+                        return -1;
                     }
                     if (cidr >= 0) {
                         ss_ipset_assign(list_ipv4, addr.bytes, 32, (unsigned)cidr, true);
@@ -222,7 +251,9 @@ init_acl(const char *path)
                 } else if (addr.version == 6) {
                     if (cidr > 128 || cidr == -2) {
                         LOGE("invalid ACL IPv6 CIDR: %s", line);
-                        continue;
+                        fclose(f);
+                        free_acl();
+                        return -1;
                     }
                     if (cidr >= 0) {
                         ss_ipset_assign(list_ipv6, addr.bytes, 128, (unsigned)cidr, true);
@@ -232,20 +263,16 @@ init_acl(const char *path)
                 }
             } else {
                 rule_t *rule = new_rule();
-                if (rule == NULL) {
-                    continue;
-                }
-                int status = accept_rule_arg(rule, line);
+                int status   = rule != NULL ? accept_rule_arg(rule, line) : -1;
                 if (status == 1) status = init_rule(rule);
-                if (status < 0) {
+                if (status != 1) {
+                    // A rule that cannot be used must not silently drop
+                    // out of a block list.
+                    LOGE("invalid ACL rule: %s", line);
                     free_rule(rule);
                     fclose(f);
                     free_acl();
                     return -1;
-                }
-                if (status != 1) {
-                    free_rule(rule);
-                    continue;
                 }
                 add_rule(rules, rule);
             }
@@ -281,6 +308,8 @@ free_acl(void)
     free_rules(&black_list_rules);
     free_rules(&white_list_rules);
     free_rules(&outbound_block_list_rules);
+
+    acl_mode = BLACK_LIST;
 }
 
 int
@@ -299,7 +328,7 @@ acl_match_host(const char *host)
 {
     struct ss_ip addr;
     int ret = 0;
-    int err = ss_ip_init(&addr, host);
+    int err = acl_ip_init(&addr, host) < 0 ? -1 : 0;
 
     if (err) {
         int host_len = strlen(host);
@@ -329,7 +358,7 @@ int
 acl_add_ip(const char *ip)
 {
     struct ss_ip addr;
-    int err = ss_ip_init(&addr, ip);
+    int err = acl_ip_init(&addr, ip) < 0 ? -1 : 0;
     if (err) {
         return -1;
     }
@@ -347,7 +376,7 @@ int
 acl_remove_ip(const char *ip)
 {
     struct ss_ip addr;
-    int err = ss_ip_init(&addr, ip);
+    int err = acl_ip_init(&addr, ip) < 0 ? -1 : 0;
     if (err) {
         return -1;
     }
@@ -370,7 +399,7 @@ outbound_block_match_host(const char *host)
 {
     struct ss_ip addr;
     int ret = 0;
-    int err = ss_ip_init(&addr, host);
+    int err = acl_ip_init(&addr, host) < 0 ? -1 : 0;
 
     if (err) {
         int host_len = strlen(host);

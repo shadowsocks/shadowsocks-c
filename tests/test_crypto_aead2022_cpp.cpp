@@ -351,6 +351,41 @@ void udp_window()
     SS_CHECK(pkt && !sc::udp2022_accept(sc::Role::server, server, *pkt, out, std::time(nullptr) + 31));
 }
 
+// A client keeps the replay window of the server session it heard from
+// before, so a server that starts a new session cannot have its old replies
+// replayed into a fresh window.
+void udp_server_session_change()
+{
+    sc::Psk psk = psk_of("2022-blake3-aes-128-gcm");
+    sc::UdpSession2022 client, server1, server2;
+    std::uint8_t plain[sizeof(kAddr)];
+    std::memcpy(plain, kAddr, sizeof(kAddr));
+    std::vector<std::uint8_t> req(sizeof(plain) + sc::udp2022_overhead(psk, sc::Role::client));
+    SS_CHECK(sc::udp2022_seal(psk, sc::Role::client, client, plain, req));
+    for (sc::UdpSession2022 *server : { &server1, &server2 }) {
+        std::vector<std::uint8_t> out(req.size());
+        auto pkt = sc::udp2022_decrypt(psk, req, out);
+        SS_CHECK(pkt && sc::udp2022_accept(sc::Role::server, *server, *pkt, out, std::time(nullptr)));
+    }
+    auto reply = [&](sc::UdpSession2022 &server) {
+        std::vector<std::uint8_t> p(sizeof(plain) + sc::udp2022_overhead(psk, sc::Role::server));
+        SS_CHECK(sc::udp2022_seal(psk, sc::Role::server, server, plain, p));
+        return p;
+    };
+    auto deliver = [&](const std::vector<std::uint8_t> &p) {
+        std::vector<std::uint8_t> out(p.size());
+        auto pkt = sc::udp2022_decrypt(psk, p, out);
+        SS_CHECK(pkt);
+        return static_cast<bool>(sc::udp2022_accept(sc::Role::client, client, *pkt, out, std::time(nullptr)));
+    };
+    auto a1 = reply(server1), b1 = reply(server1), a2 = reply(server2);
+    SS_CHECK(deliver(a1));
+    SS_CHECK(deliver(a2));  // the server moved to a new session
+    SS_CHECK(!deliver(a1)); // a replay of the old session is still caught
+    SS_CHECK(deliver(b1));  // a late packet of the old session is not
+    SS_CHECK(!deliver(a2) && !deliver(b1));
+}
+
 void salt_pool()
 {
     sc::SaltPool pool;
@@ -358,7 +393,11 @@ void salt_pool()
     std::uint8_t a[32] = { 1 }, b[32] = { 2 }, d[32] = { 3 };
     SS_CHECK(pool.check_and_add(a, 100) && !pool.check_and_add(a, 159));
     SS_CHECK(pool.check_and_add(a, 160)); // retention over
-    SS_CHECK(pool.check_and_add(b, 161) && pool.check_and_add(d, 161) && pool.size() == 2);
+    SS_CHECK(pool.check_and_add(b, 161) && pool.size() == 2);
+    // Full of salts still inside the window: a new one is refused rather
+    // than evicting one that could then be replayed.
+    SS_CHECK(!pool.check_and_add(d, 161) && pool.size() == 2 && !pool.check_and_add(a, 161));
+    SS_CHECK(pool.check_and_add(d, 221)); // a and b have expired
 }
 
 void steady(const sc::Psk &psk, sc::SaltPool &pool)
@@ -395,6 +434,7 @@ void test_methods()
     }
     tcp_rejects();
     udp_window();
+    udp_server_session_change();
     salt_pool();
     SS_CHECK(!sc::find_aead2022("aes-256-gcm"));
     auto spec = sc::find_aead2022("2022-blake3-aes-256-gcm");

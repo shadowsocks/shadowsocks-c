@@ -8,12 +8,29 @@
 #include <winsock2.h>
 #include <windows.h>
 #else
+#include <fcntl.h>
+#include <grp.h>
+#include <pwd.h>
 #include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <linux/capability.h>
+#include <sys/prctl.h>
+#include <sys/syscall.h>
+#endif
 extern char **environ;
+#endif
+
+#ifndef _WIN32
+#ifdef __APPLE__
+typedef int ss_group_t; /* getgrouplist() takes int on macOS */
+#else
+typedef gid_t ss_group_t;
+#endif
+enum { SS_MAX_GROUPS = 64 };
 #endif
 
 struct ss_process {
@@ -25,6 +42,11 @@ struct ss_process {
     uint16_t control_port;
 #else
     pid_t pid;
+    bool drop; /* switch to uid/gid/groups in the child */
+    uid_t uid;
+    gid_t gid;
+    ss_group_t groups[SS_MAX_GROUPS];
+    int ngroups;
 #endif
 };
 
@@ -66,6 +88,149 @@ ss_process_env(struct ss_process *process, const char *name, const char *value)
 }
 
 #ifndef _WIN32
+int
+ss_process_user(struct ss_process *process, const char *user)
+{
+    if (user == NULL || geteuid() != 0) {
+        return 0; /* nothing to drop */
+    }
+    char buf[16 * 1024];
+    struct passwd pwdbuf, *pwd = NULL;
+    char *end = NULL;
+    long uid  = strtol(user, &end, 10);
+    int err   = (*user != '\0' && *end == '\0' && uid >= 0)
+                ? getpwuid_r((uid_t)uid, &pwdbuf, buf, sizeof(buf), &pwd)
+                : getpwnam_r(user, &pwdbuf, buf, sizeof(buf), &pwd);
+    if (err != 0 || pwd == NULL) {
+        LOGE("plugin: unknown user %s", user);
+        return -1;
+    }
+    process->ngroups = SS_MAX_GROUPS;
+    if (getgrouplist(pwd->pw_name, (ss_group_t)pwd->pw_gid, process->groups, &process->ngroups) == -1) {
+        process->groups[0] = (ss_group_t)pwd->pw_gid; /* more than SS_MAX_GROUPS: keep the primary one */
+        process->ngroups   = 1;
+    }
+    process->uid  = pwd->pw_uid;
+    process->gid  = pwd->pw_gid;
+    process->drop = true;
+    return 0;
+}
+
+/* The executable execve() runs: `program` itself if it names a path, or the
+ * first match on PATH, as posix_spawnp() would find it. */
+static char *
+find_program(const char *program)
+{
+    if (strchr(program, '/') != NULL) {
+        return copy_string(program);
+    }
+    const char *path = getenv("PATH");
+    if (path == NULL || *path == '\0') {
+        path = "/usr/local/bin:/usr/bin:/bin";
+    }
+    size_t room = strlen(path) + strlen(program) + 2;
+    char *candidate = (char *)ss_malloc(room); // heap-ok: plugin start, startup
+    for (const char *dir = path;; ) {
+        const char *colon = strchr(dir, ':');
+        size_t len = colon != NULL ? (size_t)(colon - dir) : strlen(dir);
+        snprintf(candidate, room, "%.*s%s%s", (int)len, dir, len > 0 ? "/" : "", program);
+        if (access(candidate, X_OK) == 0) {
+            return candidate;
+        }
+        if (colon == NULL) {
+            break;
+        }
+        dir = colon + 1;
+    }
+    free(candidate); // heap-ok: plugin start, startup
+    return NULL;
+}
+
+/* In the forked child: lose root, but keep the right to bind ports below
+ * 1024 (on Linux), which a server-side plugin listening on 443 needs. Only
+ * system calls from here on. */
+static int
+drop_in_child(const struct ss_process *process)
+{
+#ifdef __linux__
+    (void)prctl(PR_SET_KEEPCAPS, 1, 0, 0, 0);
+#endif
+    if (setgroups((size_t)process->ngroups, (const gid_t *)process->groups) != 0
+        || setgid(process->gid) != 0 || setuid(process->uid) != 0) {
+        return -1;
+    }
+    if (setuid(0) == 0) {
+        return -1; /* root must be gone for good */
+    }
+#ifdef __linux__
+    struct __user_cap_header_struct header = { _LINUX_CAPABILITY_VERSION_3, 0 };
+    struct __user_cap_data_struct data[2];
+    memset(data, 0, sizeof(data));
+    data[0].effective = data[0].permitted = data[0].inheritable = 1U << CAP_NET_BIND_SERVICE;
+    if (syscall(SYS_capset, &header, data) == 0) {
+#ifdef PR_CAP_AMBIENT
+        /* Ambient, so it survives execve() of a non-setcap binary. */
+        (void)prctl(PR_CAP_AMBIENT, PR_CAP_AMBIENT_RAISE, CAP_NET_BIND_SERVICE, 0, 0);
+#endif
+    }
+#endif
+    return 0;
+}
+
+static int
+fork_as_user(struct ss_process *process, char **env)
+{
+    char *path = find_program(process->program);
+    if (path == NULL) {
+        return ENOENT;
+    }
+    /* The child reports a failed switch or exec through this pipe. */
+    int report[2];
+    if (pipe(report) != 0) {
+        int error = errno;
+        free(path); // heap-ok: plugin start, startup
+        return error;
+    }
+    (void)fcntl(report[1], F_SETFD, FD_CLOEXEC);
+    pid_t pid = fork();
+    if (pid == 0) {
+        close(report[0]);
+        (void)setpgid(0, 0);
+        sigset_t empty;
+        sigemptyset(&empty);
+        (void)sigprocmask(SIG_SETMASK, &empty, NULL);
+        signal(SIGPIPE, SIG_DFL);
+        signal(SIGTERM, SIG_DFL);
+        signal(SIGINT, SIG_DFL);
+        int error = EPERM;
+        if (drop_in_child(process) == 0) {
+            execve(path, process->argv, env); // NOLINT(clang-analyzer-optin.taint.GenericTaint): the PATH lookup posix_spawnp() would do
+            error = errno;
+        }
+        ssize_t ignored = write(report[1], &error, sizeof(error));
+        (void)ignored;
+        _exit(127);
+    }
+    int error = pid < 0 ? errno : 0;
+    close(report[1]);
+    if (pid > 0) {
+        int child_error = 0;
+        ssize_t n;
+        do {
+            n = read(report[0], &child_error, sizeof(child_error));
+        } while (n < 0 && errno == EINTR);
+        if (n == (ssize_t)sizeof(child_error)) {
+            while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
+            error = child_error;
+        } else {
+            process->pid = pid;
+        }
+    }
+    close(report[0]);
+    free(path); // heap-ok: plugin start, startup
+    return error;
+}
+
 static bool
 overridden(const struct ss_process *process, const char *entry)
 {
@@ -100,6 +265,16 @@ ss_process_start(struct ss_process *process, uint16_t control_port)
         env[used++] = process->env[i];
     }
     env[used] = NULL;
+    if (process->drop) {
+        int error = fork_as_user(process, env);
+        free(env); // heap-ok: plugin start, startup
+        if (error != 0) {
+            process->pid = 0;
+            errno = error;
+            return -1;
+        }
+        return 0;
+    }
     posix_spawnattr_t attr;
     int error = posix_spawnattr_init(&attr);
     if (error == 0) {
@@ -159,6 +334,14 @@ stop_process(struct ss_process *process)
     }
 }
 #else
+int
+ss_process_user(struct ss_process *process, const char *user)
+{
+    (void)process;
+    (void)user;
+    return 0;
+}
+
 static wchar_t *
 wide_string(const char *text)
 {

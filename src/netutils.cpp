@@ -175,6 +175,8 @@ get_sockaddr(char *host, char *port,
             if (port != NULL) {
                 addr->sin6_port = htons(numeric_port);
             }
+        } else {
+            return -1;
         }
         return 0;
     } else {
@@ -221,12 +223,12 @@ get_sockaddr(char *host, char *port,
             }
         }
 
-        if (rp == NULL) {
+        int found = rp != NULL;
+        freeaddrinfo(result);
+        if (!found) {
             LOGE("failed to resolve remote addr");
             return -1;
         }
-
-        freeaddrinfo(result);
         return 0;
     }
 
@@ -332,7 +334,9 @@ validate_hostname(const char *hostname, const int hostname_len)
             }
         }
 
-        label += label_len + 1;
+        if (next_dot == NULL)
+            break;
+        label = next_dot + 1; // a trailing dot ends the loop here
     }
 
     return 1;

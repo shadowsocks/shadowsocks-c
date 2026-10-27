@@ -31,10 +31,11 @@ Status Method::init(const char *method, const char *password, const char *key, R
     role_ = role;
     // The salt/IV replay filter shared by every connection and datagram.
     if (!bloom_ready_) {
-        if (role == Role::server) {
-            ppbloom_init(kBloomEntriesServer, kBloomErrorServer);
-        } else {
-            ppbloom_init(kBloomEntriesClient, kBloomErrorClient);
+        int err = role == Role::server ? ppbloom_init(kBloomEntriesServer, kBloomErrorServer)
+                                       : ppbloom_init(kBloomEntriesClient, kBloomErrorClient);
+        if (err != 0) {
+            LOGE("failed to set up the replay filter");
+            return fail(Errc::exhausted);
         }
         bloom_ready_ = true;
     }

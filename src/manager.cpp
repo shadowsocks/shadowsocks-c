@@ -67,6 +67,8 @@
 
 #include "event/program.hpp"
 
+#define SERVER_START_TIMEOUT_MS 10000
+
 #ifndef BUF_SIZE
 #define BUF_SIZE 65535
 #endif
@@ -86,6 +88,104 @@ static struct server *
 find_server(const char *port)
 {
     return server_table.find_if([port](struct server &server) { return strcmp(server.port, port) == 0; });
+}
+
+// How the control channel is reached, set once at startup.
+static bool control_is_unix = false;
+static uid_t server_uid      = (uid_t)-1; // the -a user managed servers run as
+
+#ifdef __linux__
+/*
+ * The uid owning the UDP socket a datagram came from, found in
+ * /proc/net/udp{,6} like identd would. Only meaningful for loopback
+ * senders, which is all the control channel accepts.
+ */
+static bool
+udp_sender_uid(const struct sockaddr_storage *from, uid_t *uid)
+{
+    bool v6           = from->ss_family == AF_INET6;
+    unsigned want_port = ntohs(v6 ? ((const struct sockaddr_in6 *)from)->sin6_port
+                                  : ((const struct sockaddr_in *)from)->sin_port);
+    FILE *f = fopen(v6 ? "/proc/net/udp6" : "/proc/net/udp", "r");
+    if (f == NULL) {
+        return false;
+    }
+    char line[512];
+    bool found = false;
+    if (fgets(line, sizeof(line), f) != NULL) { // header
+        while (!found && fgets(line, sizeof(line), f) != NULL) {
+            char local[64];
+            unsigned port;
+            unsigned long owner;
+            // sl local_address rem_address st tx:rx tr:when retrnsmt uid
+            if (sscanf(line, " %*s %63[0-9A-Fa-f]:%x %*s %*s %*s %*s %*s %lu", local, &port, &owner) != 3
+                || port != want_port) {
+                continue;
+            }
+            // The kernel prints each 32-bit word of the address as a host
+            // order integer; zeros mean the socket is unbound (wildcard).
+            uint8_t bytes[16];
+            size_t words = v6 ? 4 : 1;
+            if (strlen(local) != words * 8) {
+                continue;
+            }
+            bool wildcard = true;
+            for (size_t w = 0; w < words; w++) {
+                char hex[9];
+                memcpy(hex, local + w * 8, 8);
+                hex[8]         = '\0';
+                uint32_t value = (uint32_t)strtoul(hex, NULL, 16);
+                memcpy(bytes + w * 4, &value, 4);
+                wildcard = wildcard && value == 0;
+            }
+            const void *addr = v6 ? (const void *)&((const struct sockaddr_in6 *)from)->sin6_addr
+                                  : (const void *)&((const struct sockaddr_in *)from)->sin_addr;
+            if (wildcard || memcmp(bytes, addr, words * 4) == 0) {
+                *uid  = (uid_t)owner;
+                found = true;
+            }
+        }
+    }
+    fclose(f);
+    return found;
+}
+#endif
+
+/*
+ * Whether a datagram on the control channel may be obeyed. A unix socket
+ * is guarded by its file mode; a (loopback) UDP sender must, where the
+ * system can tell, be this user, root or the user servers run as.
+ */
+static bool
+control_sender_allowed(const struct sockaddr_storage *from)
+{
+    if (control_is_unix) {
+        return true;
+    }
+#ifdef __linux__
+    uid_t uid;
+    if (!udp_sender_uid(from, &uid)) {
+        return false;
+    }
+    return uid == geteuid() || uid == 0 || (server_uid != (uid_t)-1 && uid == server_uid);
+#else
+    (void)from;
+    return true;
+#endif
+}
+
+static bool
+is_loopback_host(const char *host)
+{
+    struct ss_ip ip;
+    if (ss_ip_init(&ip, host) != 0) {
+        return strcmp(host, "localhost") == 0;
+    }
+    if (ip.version == 4) {
+        return ip.bytes[0] == 127;
+    }
+    static const uint8_t v6_loopback[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1 };
+    return memcmp(ip.bytes, v6_loopback, sizeof(v6_loopback)) == 0;
 }
 
 static int
@@ -109,6 +209,9 @@ copy_port(char *dst, size_t dst_len, const char *src, size_t src_len)
         dst[0] = '\0';
         return -1;
     }
+    // Canonical form ("0080" is "80"): the table, the config file and the
+    // pid file ss-server writes must all use the same name.
+    snprintf(dst, dst_len, "%u", (unsigned)port);
 
     return 0;
 }
@@ -327,7 +430,23 @@ build_config(char *prefix, struct manager_ctx *manager, struct server *server)
 
     path = (char *)ss_malloc(path_size);
     snprintf(path, path_size, "%s/.shadowsocks_%s.conf", prefix, server->port);
-    FILE *f = fopen(path, "w+");
+    // It holds the password: owner-only, and never written through a link.
+    int flags = O_WRONLY | O_CREAT | O_TRUNC;
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int fd  = open(path, flags, 0600);
+    FILE *f = NULL;
+    if (fd != -1) {
+        (void)fchmod(fd, 0600); // an older file may have been more open
+        f = fdopen(fd, "w");
+        if (f == NULL) {
+            close(fd);
+        }
+    }
     if (f == NULL) {
         if (verbose) {
             LOGE("unable to open config file");
@@ -385,6 +504,8 @@ add_server_arg(char **argv, int *argc, int max_argc, char *arg)
     argv[*argc]     = NULL;
     return 0;
 }
+
+static void kill_pid_from_file(FILE *f);
 
 static int
 start_server_process(struct manager_ctx *manager, struct server *server)
@@ -538,8 +659,29 @@ start_server_process(struct manager_ctx *manager, struct server *server)
         _exit(127);
     }
 
-    while (waitpid(pid, &status, 0) == -1) {
-        if (errno != EINTR) {
+    // ss-server -f returns once it is serving (or has failed). Wait for
+    // that, but not forever: a server stuck starting must not stall the
+    // control channel.
+    {
+        int waited = 0;
+        pid_t done;
+        while ((done = waitpid(pid, &status, WNOHANG)) == 0 && waited < SERVER_START_TIMEOUT_MS) {
+            struct timespec delay = { 0, 10 * 1000 * 1000 };
+            nanosleep(&delay, NULL);
+            waited += 10;
+        }
+        if (done == 0) {
+            LOGE("server on port %d did not start within %d ms", port, SERVER_START_TIMEOUT_MS);
+            kill(pid, SIGKILL);
+            while (waitpid(pid, &status, 0) == -1 && errno == EINTR) {}
+            FILE *f = fopen(pid_path, "r"); // the daemon it may have forked already
+            if (f != NULL) {
+                kill_pid_from_file(f);
+                fclose(f);
+            }
+            goto ERROR;
+        }
+        if (done == -1) {
             ERROR("waitpid");
             goto ERROR;
         }
@@ -575,7 +717,9 @@ get_data(char *buf, int len)
     if (pos == len) {
         return NULL;
     }
-    data = buf + pos - 1;
+    // The JSON object itself (one byte earlier was the ':' that
+    // get_action() has already cut, or buf[-1] for a bare "{").
+    data = buf + pos;
 
     return data;
 }
@@ -666,6 +810,13 @@ get_server(char *buf, int len)
                     strncpy(server->no_delay, (value->u.boolean ? "true" : "false"), 8);
                 }
             } else if (strcmp(name, "plugin") == 0) {
+                if (!control_is_unix) {
+                    // It names a program to run: only over the unix socket,
+                    // whose file mode says who may send.
+                    LOGE("a per-server plugin is accepted only over a unix socket manager address");
+                    valid = 0;
+                    break;
+                }
                 if (value->type == json_string) {
                     server->plugin = strdup(value->u.string.ptr);
                 }
@@ -678,7 +829,7 @@ get_server(char *buf, int len)
                     server->mode = strdup(value->u.string.ptr);
                 }
             } else {
-                LOGE("invalid data: %s", data);
+                LOGE("invalid data: unknown field \"%s\"", name);
                 valid = 0;
                 break;
             }
@@ -839,6 +990,7 @@ check_port(struct manager_ctx *manager, struct server *server)
             udp_ret = create_and_bind(manager->hosts[i], server->port, IPPROTO_UDP);
         }
 
+        // create_and_bind() has already closed the probe socket.
         if (tcp_udp_ret == -1 || udp_ret == -1) {
             bind_err = -1;
             break;
@@ -871,6 +1023,64 @@ add_server(struct manager_ctx *manager, struct server *server)
     return 0;
 }
 
+/*
+ * A stale pid file may name a pid that has been reused since: signal only
+ * a process that is one of our ss-server instances, where the system can
+ * tell (each one is started with --manager-address).
+ */
+static bool
+is_managed_server(int pid)
+{
+#ifdef __linux__
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%d/cmdline", pid);
+    FILE *f = fopen(path, "r");
+    if (f == NULL) {
+        return errno != ENOENT; // gone: nothing to signal; unreadable: assume ours
+    }
+    char cmdline[4096];
+    size_t n = fread(cmdline, 1, sizeof(cmdline), f);
+    fclose(f);
+    for (size_t i = 0; i < n;) {
+        const char *arg = cmdline + i;
+        size_t len      = strnlen(arg, n - i);
+        if (len == strlen("--manager-address") && memcmp(arg, "--manager-address", len) == 0) {
+            return true;
+        }
+        i += len + 1;
+    }
+    return false;
+#else
+    (void)pid;
+    return true;
+#endif
+}
+
+/*
+ * SIGTERM, then wait (briefly) for the server to go, so its port is free
+ * for a server added in its place; SIGKILL if it lingers.
+ */
+static void
+stop_pid(int pid)
+{
+    if (!is_managed_server(pid)) {
+        LOGE("pid %d is not a managed ss-server; not signaling it", pid);
+        return;
+    }
+    if (kill(pid, SIGTERM) != 0) {
+        return;
+    }
+    for (int i = 0; i < 200; i++) {
+        if (kill(pid, 0) != 0 && errno == ESRCH) {
+            return;
+        }
+        struct timespec delay = { 0, 10 * 1000 * 1000 };
+        nanosleep(&delay, NULL);
+    }
+    LOGE("server %d ignored SIGTERM; killing it", pid);
+    kill(pid, SIGKILL);
+}
+
 static void
 kill_pid_from_file(FILE *f)
 {
@@ -889,7 +1099,7 @@ kill_pid_from_file(FILE *f)
     }
     // Reject malformed pid file content instead of signaling a garbage pid
     if (ss_parse_int(buf, 1, INT_MAX, &pid) == 0) {
-        kill(pid, SIGTERM);
+        stop_pid(pid);
     }
 }
 
@@ -931,6 +1141,10 @@ stop_server(char *prefix, char *port)
     }
     kill_pid_from_file(f);
     fclose(f);
+    remove(path);
+    // The config holds the password of a server that no longer runs.
+    snprintf(path, path_size, "%s/.shadowsocks_%s.conf", prefix, port);
+    remove(path);
     ss_free(path);
 }
 
@@ -967,15 +1181,25 @@ manager_recv_cb(void *ctx) noexcept
     struct manager_ctx *manager = (struct manager_ctx *)ctx;
     socklen_t len;
     ssize_t r;
-    struct sockaddr_un claddr;
+    // Big enough for a unix, IPv4 or IPv6 sender.
+    union {
+        struct sockaddr_un un;
+        struct sockaddr_storage storage;
+    } claddr_buf;
+    memset(&claddr_buf, 0, sizeof(claddr_buf));
+    struct sockaddr_un &claddr = claddr_buf.un;
     char buf[BUF_SIZE];
 
     memset(buf, 0, BUF_SIZE);
 
-    len = sizeof(struct sockaddr_un);
+    len = sizeof(claddr_buf);
     r   = recvfrom(manager->fd, buf, BUF_SIZE, 0, (struct sockaddr *)&claddr, &len);
     if (r == -1) {
         ERROR("manager_recvfrom");
+        return;
+    }
+    if (!control_sender_allowed((const struct sockaddr_storage *)&claddr)) {
+        LOGE("ignoring a control datagram from another user");
         return;
     }
 
@@ -996,7 +1220,7 @@ manager_recv_cb(void *ctx) noexcept
         struct server *server = get_server(buf, r);
 
         if (server == NULL || server->port[0] == 0 || server->password[0] == 0) {
-            LOGE("invalid command: %s:%s", buf, get_data(buf, r));
+            LOGE("invalid command: %s", buf);
             if (server != NULL) {
                 free_server(server);
             }
@@ -1033,17 +1257,25 @@ manager_recv_cb(void *ctx) noexcept
             size_t entry_pos      = 0;
             size_t pos            = strlen(buf);
 
-            if (append_list_entry(entry_buf, sizeof(entry_buf), &entry_pos, server, method) == -1) {
+            // Leaves room for "[" and "\n]\0" around it in buf.
+            if (append_list_entry(entry_buf, sizeof(entry_buf) - 4, &entry_pos, server, method) == -1) {
                 LOGE("list entry is too large");
                 continue;
             }
-            if (pos >= BUF_SIZE - entry_pos) {
-                if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
-                    != (ssize_t)pos) {
-                    ERROR("list_sendto");
+            // Room for the entry and the closing "\n]" with its NUL; a full
+            // buffer goes out as a complete array of its own.
+            if (pos + entry_pos + 3 > BUF_SIZE) {
+                if (pos > 1) {
+                    strcpy(buf + pos - 1, "\n]"); // replaces the trailing ","
+                    pos = strlen(buf);
+                    if (sendto(manager->fd, buf, pos, 0, (struct sockaddr *)&claddr, len)
+                        != (ssize_t)pos) {
+                        ERROR("list_sendto");
+                    }
                 }
                 memset(buf, 0, BUF_SIZE);
-                pos = 0;
+                strcpy(buf, "[");
+                pos = 1;
             }
             memcpy(buf + pos, entry_buf, entry_pos + 1);
         }
@@ -1059,7 +1291,7 @@ manager_recv_cb(void *ctx) noexcept
         struct server *server = get_server(buf, r);
 
         if (server == NULL || server->port[0] == 0) {
-            LOGE("invalid command: %s:%s", buf, get_data(buf, r));
+            LOGE("invalid command: %s", buf);
             if (server != NULL) {
                 free_server(server);
             }
@@ -1078,7 +1310,7 @@ manager_recv_cb(void *ctx) noexcept
         uint64_t traffic = 0;
 
         if (parse_traffic(buf, r, port, &traffic) == -1) {
-            LOGE("invalid command: %s:%s", buf, get_data(buf, r));
+            LOGE("invalid command: %s", buf);
             return;
         }
 
@@ -1688,11 +1920,22 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     }
     LOGI("working directory points to %s", working_dir);
 
-    int err = mkdir(working_dir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+    // It holds every server's config (with its password) and pid file.
+    int err = mkdir(working_dir, S_IRWXU);
     if (err != 0 && errno != EEXIST) {
         ERROR("mkdir");
         ss_free(working_dir);
         FATAL("unable to create working directory");
+    }
+    // An existing directory must be ours alone: in a shared place such as
+    // /tmp, someone else could have made it to plant links and pid files.
+    struct stat st;
+    if (stat(working_dir, &st) != 0 || !S_ISDIR(st.st_mode)
+        || (st.st_uid != geteuid() && st.st_uid != 0) || (st.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
+        LOGE("working directory %s must be a directory owned by this user and writable by it alone",
+             working_dir);
+        ss_free(working_dir);
+        FATAL("unsafe working directory");
     }
 
     if (manager_address == NULL) {
@@ -1725,6 +1968,18 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     manager.iface           = iface;
     manager.acl             = acl;
     manager.user            = user;
+    if (user != NULL) {
+        // Servers started with -a report from this uid.
+        char *end      = NULL;
+        long numeric   = strtol(user, &end, 10);
+        struct passwd *pw = (*user != '\0' && *end == '\0' && numeric >= 0) ? getpwuid((uid_t)numeric)
+                                                                              : getpwnam(user);
+        if (pw == NULL) {
+            LOGE("unknown user %s", user);
+            FATAL("invalid user");
+        }
+        server_uid = pw->pw_uid;
+    }
     manager.manager_address = manager_address;
     manager.hosts           = server_host;
     manager.host_num        = server_num;
@@ -1812,7 +2067,29 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             ss_free(working_dir);
             exit(EXIT_FAILURE);
         }
+        // The protocol has no authentication of its own: only this user
+        // (and the -a user the servers report as) may send, whatever the
+        // umask.
+        if (chmod(manager_address, S_IRUSR | S_IWUSR) == -1) {
+            ERROR("chmod");
+            ss_free(working_dir);
+            exit(EXIT_FAILURE);
+        }
+        if (server_uid != (uid_t)-1 && geteuid() == 0 && chown(manager_address, server_uid, (gid_t)-1) == -1) {
+            ERROR("chown");
+            ss_free(working_dir);
+            exit(EXIT_FAILURE);
+        }
+        control_is_unix = true;
     } else {
+        // Over IP anyone who can reach the port could list passwords and
+        // start servers: loopback only.
+        if (ip_addr.host == NULL || !is_loopback_host(ip_addr.host)) {
+            LOGE("the manager address %s:%s is not a loopback address; use a unix socket or 127.0.0.1",
+                 ip_addr.host != NULL ? ip_addr.host : "*", ip_addr.port);
+            ss_free(working_dir);
+            FATAL("unsafe manager address");
+        }
         sfd = create_server_socket(ip_addr.host, ip_addr.port);
         if (sfd == -1) {
             ss_free(working_dir);
@@ -1824,6 +2101,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     if (!program.watch(manager.fd, manager_recv_cb, &manager))
         FATAL("failed to watch the control socket");
 
+    daemon_ready();
     // start ev loop
     (void)program.run();
 

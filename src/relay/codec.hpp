@@ -30,6 +30,10 @@ public:
     // or a base64 key (AEAD-2022 needs the key). Also initialises libsodium
     // and the process-wide ppbloom replay filter, sized for the role.
     Status init(const char *method, const char *password, const char *key, Role role) noexcept;
+    Method() = default;
+    // It owns the process-wide replay filter: a copy would free it twice.
+    Method(const Method &)            = delete;
+    Method &operator=(const Method &) = delete;
     ~Method();
 
     Role role() const noexcept { return role_; }

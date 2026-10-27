@@ -19,5 +19,6 @@ start_plugin(const char *plugin, const char *options, const char *remote_host,
     return -1;
 }
 uint16_t get_local_port(void) { FATAL("Plugin support is disabled in this build"); return 0; }
+void set_plugin_user(const char *user) { (void)user; }
 void stop_plugin(void) {}
 int is_plugin_running(void) { return 0; }

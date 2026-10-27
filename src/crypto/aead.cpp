@@ -91,7 +91,8 @@ private:
 
 bool ppbloom_seen(void *, std::span<const std::uint8_t> salt) noexcept
 {
-    return ppbloom_check(salt.data(), static_cast<int>(salt.size())) == 1;
+    // An unusable filter (-1) counts as seen: replay protection fails closed.
+    return ppbloom_check(salt.data(), static_cast<int>(salt.size())) != 0;
 }
 
 void ppbloom_remember(void *, std::span<const std::uint8_t> salt) noexcept
@@ -177,6 +178,7 @@ Status hkdf_sha1(std::span<const std::uint8_t> salt, std::span<const std::uint8_
         expand.update({ &counter, 1 });
         if (!expand.finish(t)) {
             sodium_memzero(prk, sizeof(prk));
+            sodium_memzero(t, sizeof(t));
             return fail(Errc::crypto);
         }
         t_len         = kHash;
@@ -290,6 +292,11 @@ Status AeadTcpEncryptor::init(const MasterKey &master, ReplayFilter filter, bool
     salt_sent_ = false;
     nonce_.fill(0);
     randombytes_buf(salt_.data(), master.spec.key_len);
+    if (printable_salt && master.spec.key_len < 32) {
+        // Up to 12 constrained bytes leave >= 238 bits of a 32-byte salt
+        // but only ~111 of a 16-byte one: not offered there.
+        return fail(Errc::config);
+    }
     if (printable_salt) {
         // Vary the constrained span without adding a delimiter or marker.
         std::size_t prefix = 6 + randombytes_uniform(7);
@@ -418,8 +425,9 @@ Result<AeadTcpDecryptor::Step> AeadTcpDecryptor::decrypt(std::span<const std::ui
                 failed_ = true;
                 return fail(Errc::crypto);
             }
-            std::size_t payload = load16_be(len) & kMaxChunk;
-            if (payload == 0) {
+            // The two top bits are reserved (SIP004): reject, don't mask.
+            std::size_t payload = load16_be(len);
+            if (payload == 0 || payload > kMaxChunk) {
                 failed_ = true;
                 return fail(Errc::protocol);
             }

@@ -77,6 +77,9 @@ int start_plugin(const char *plugin,
                  uint16_t control_port,
 #endif
                  enum plugin_mode mode);
+/* The user the plugin runs as once started as root (see --user); NULL
+ * keeps the starting user. Set before start_plugin(). */
+void set_plugin_user(const char *user);
 uint16_t get_local_port();
 void stop_plugin();
 int is_plugin_running();

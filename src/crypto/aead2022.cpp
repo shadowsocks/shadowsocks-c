@@ -83,7 +83,7 @@ std::size_t socks_addr_len(std::span<const std::uint8_t> buf) noexcept
         return 0;
     }
     std::size_t len = 0;
-    switch (buf[0] & 0x0F) {
+    switch (buf[0]) { // exactly 1, 3 or 4, as the SOCKS parser reads it
     case 1:
         len = 1 + 4;
         break;
@@ -222,7 +222,9 @@ bool SaltPool::check_and_add(std::span<const std::uint8_t> salt, std::uint64_t n
         return false;
     }
     if (seen_.full()) {
-        (void)seen_.pop_oldest();
+        // Every remembered salt is still inside the replay window: forgetting
+        // one would let its request be replayed, so refuse the new one.
+        return false;
     }
     return seen_.emplace(*key, now).has_value();
 }
@@ -672,12 +674,24 @@ Result<std::size_t> udp2022_accept(Role role, UdpSession2022 &session, const Udp
     }
     std::size_t pad = load16_be(body + o);
     o += kLenSize;
-    if (o + pad > n) {
+    if (pad > k2022MaxPad || o + pad > n) {
         return fail(Errc::protocol);
     }
     o += pad;
 
-    if (!session.rx_ready || session.rx_id != packet.session_id) {
+    if (session.rx_ready && session.rx_id != packet.session_id) {
+        // Keep the current window as the previous one, or bring the previous
+        // one back for a late packet of that session.
+        bool back = session.prev_ready && session.prev_id == packet.session_id;
+        std::swap(session.rx_id, session.prev_id);
+        std::swap(session.rx_highest, session.prev_highest);
+        std::swap(session.rx_window, session.prev_window);
+        std::swap(session.rx_ready, session.prev_ready);
+        if (!back) {
+            session.rx_ready = false;
+        }
+    }
+    if (!session.rx_ready) {
         window_reset(session, packet.session_id, packet.packet_id);
     } else if (!window_check(session, packet.packet_id)) {
         return fail(Errc::crypto); // replayed

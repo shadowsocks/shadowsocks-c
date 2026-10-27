@@ -301,11 +301,11 @@ struct Relays {
             }
             resolving = true;
         }
-        if (!tcp.init(*loop, method, config, resolving ? &resolver : NULL) || !tcp.listen(listenfd)) {
+        if (!tcp.init(*loop, method, config, resolving ? &resolver : NULL)) {
             return false;
         }
-        tcp_on = true;
-        return true;
+        tcp_on = true; // stop() shuts it down, closing listenfd once it is taken
+        return (bool)tcp.listen(listenfd);
     }
 
     // Returns the UDP socket, or -1.
@@ -674,7 +674,11 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
             break;
         case GETOPT_VAL_ACL:
             LOGI("initializing acl...");
-            acl = !init_acl(optarg);
+            if (init_acl(optarg) != 0) {
+                LOGE("failed to load the ACL file %s", optarg);
+                FATAL("invalid ACL");
+            }
+            acl = 1;
             break;
         case GETOPT_VAL_MTU:
             if (ss_parse_int(optarg, 0, INT_MAX, &mtu) == -1) {
@@ -968,7 +972,11 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
         }
         if (acl == 0 && conf->acl != NULL) {
             LOGI("initializing acl...");
-            acl = !init_acl(conf->acl);
+            if (init_acl(conf->acl) != 0) {
+                LOGE("failed to load the ACL file %s", conf->acl);
+                FATAL("invalid ACL");
+            }
+            acl = 1;
         }
     }
 
@@ -1163,6 +1171,7 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
             snprintf(remote_str + len, buf_size - len, "|%s", remote_addr[i].host);
             len = strlen(remote_str);
         }
+        set_plugin_user(user); // it drops root along with us
         int err = start_plugin(plugin, plugin_opts, remote_str,
                                remote_port, plugin_host, plugin_port,
 #ifdef __MINGW32__
@@ -1271,6 +1280,7 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
     }
 #endif
 
+    daemon_ready();
     // Enter the loop
     ss::heap_seal();
     {
@@ -1306,13 +1316,14 @@ Same behavior as `-S`; see that option for details. Short alias: `-S`.
 
 // ------------------------------------------------------------ library API
 
-int _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udata);
+int _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udata, bool embedded);
 
 struct ss_local_handle {
     profile_t profile;
     ss_local_callback callback;
     void *udata;
     uv_thread_t thread;
+    uv_mutex_t join_lock; // serialises ss_local_wait() callers
     int result;
     bool waited;
     bool stop_requested; // guarded by control_lock
@@ -1348,7 +1359,7 @@ void free_profile(profile_t *p)
 void server_thread(void *arg)
 {
     ss_local_handle *h = (ss_local_handle *)arg;
-    h->result          = _start_ss_local_server(h->profile, h->callback, h->udata);
+    h->result          = _start_ss_local_server(h->profile, h->callback, h->udata, true);
     uv_mutex_lock(&control_lock);
     running_handle = NULL;
     server_busy    = false;
@@ -1384,6 +1395,12 @@ ss_local_start(const profile_t *profile, ss_local_callback callback, void *udata
     h->profile.log         = copy_string(profile->log);
     h->callback            = callback;
     h->udata               = udata;
+    if (uv_mutex_init(&h->join_lock) != 0) {
+        uv_mutex_unlock(&control_lock);
+        free_profile(&h->profile);
+        free(h); // heap-ok: library API, startup
+        return ENOMEM;
+    }
     server_busy            = true;
     running_handle         = h;
     uv_mutex_unlock(&control_lock);
@@ -1392,6 +1409,7 @@ ss_local_start(const profile_t *profile, ss_local_callback callback, void *udata
         server_busy    = false;
         running_handle = NULL;
         uv_mutex_unlock(&control_lock);
+        uv_mutex_destroy(&h->join_lock);
         free_profile(&h->profile);
         free(h); // heap-ok: library API, startup
         return ENOMEM;
@@ -1421,11 +1439,14 @@ ss_local_wait(ss_local_handle *handle)
     if (handle == NULL) {
         return EINVAL;
     }
+    uv_mutex_lock(&handle->join_lock);
     if (!handle->waited) {
         uv_thread_join(&handle->thread);
         handle->waited = true;
     }
-    return handle->result;
+    int result = handle->result;
+    uv_mutex_unlock(&handle->join_lock);
+    return result;
 }
 
 extern "C" void
@@ -1436,12 +1457,13 @@ ss_local_destroy(ss_local_handle *handle)
     }
     ss_local_stop(handle);
     (void)ss_local_wait(handle);
+    uv_mutex_destroy(&handle->join_lock);
     free_profile(&handle->profile);
     free(handle); // heap-ok: library API, startup
 }
 
 int
-_start_ss_local_server(profile_t profile, ss_local_callback callback, void *udata)
+_start_ss_local_server(profile_t profile, ss_local_callback callback, void *udata, bool embedded)
 {
     char *remote_host = profile.remote_host;
     char *local_addr  = profile.local_addr;
@@ -1471,9 +1493,18 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
 
     USE_LOGFILE(log);
 
+    // Nothing carries over from an earlier run in this process.
+    ret_val = 0;
+    acl     = 0;
+    udp_fd  = -1;
+    free_acl();
     if (profile.acl != NULL) {
         LOGI("initializing acl...");
-        acl = !init_acl(profile.acl);
+        if (init_acl(profile.acl) != 0) {
+            LOGE("failed to load the ACL file %s", profile.acl);
+            return -1;
+        }
+        acl = 1;
     }
 
     if (local_addr == NULL) {
@@ -1483,22 +1514,43 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
 #ifndef __MINGW32__
     // ignore SIGPIPE
     signal(SIGPIPE, SIG_IGN);
-    signal(SIGABRT, SIG_IGN);
+    if (!embedded) {
+        signal(SIGABRT, SIG_IGN);
+    }
 #endif
 
+    // The ss_local_start() API runs in a host process whose signals are its
+    // own: it stops through ss_local_stop() instead.
     ss::event::Program program;
-    if (!program.init() || !program.handle_signals(true) || !program.allow_remote_stop())
-        FATAL("failed to set up the event loop");
+    Relays relays;
+    auto abort_start = [&](int listenfd) {
+        if (listenfd >= 0 && relays.tcp.listeners() == 0) {
+            ss_socket_close(listenfd);
+        }
+        relays.stop();
+        program.close();
+        free_acl();
+        acl = 0;
+#ifdef __MINGW32__
+        winsock_cleanup();
+#endif
+        return -1;
+    };
+    if (!program.init() || (!embedded && !program.handle_signals(true)) || !program.allow_remote_stop()) {
+        LOGE("failed to set up the event loop");
+        return abort_start(-1);
+    }
 
     // Setup keys
-    Relays relays;
-    if (!relays.init(program.loop(), method, password, NULL))
-        FATAL("failed to init ciphers");
+    if (!relays.init(program.loop(), method, password, NULL)) {
+        LOGE("failed to init ciphers");
+        return abort_start(-1);
+    }
 
     struct sockaddr_storage storage;
     memset(&storage, 0, sizeof(struct sockaddr_storage));
     if (get_sockaddr(remote_host, remote_port_str, &storage, 1, ipv6first) == -1) {
-        return -1;
+        return abort_start(-1);
     }
 
     // Setup proxy context
@@ -1517,15 +1569,15 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
         listenfd = create_and_bind(local_addr, local_port_str);
         if (listenfd == -1) {
             ERROR("bind()");
-            return -1;
+            return abort_start(-1);
         }
         if (listen(listenfd, SOMAXCONN) == -1) {
             ERROR("listen()");
-            return -1;
+            return abort_start(listenfd);
         }
         if (!relays.start_tcp(tcp_config, listenfd)) {
             LOGE("failed to set up the TCP relay");
-            return -1;
+            return abort_start(listenfd);
         }
         listen_fd = listenfd;
     }
@@ -1535,7 +1587,7 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
         LOGI("udprelay enabled");
         udp_fd = relays.start_udp(local_addr, local_port_str, &storage, mtu, timeout, NULL);
         if (udp_fd == -1) {
-            return -1;
+            return abort_start(-1);
         }
     }
 
@@ -1568,6 +1620,8 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
     // Clean up
     relays.stop();
     program.close();
+    free_acl();
+    acl = 0;
 
 #ifdef __MINGW32__
     winsock_cleanup();
@@ -1579,13 +1633,13 @@ _start_ss_local_server(profile_t profile, ss_local_callback callback, void *udat
 int
 start_ss_local_server(profile_t profile)
 {
-    return _start_ss_local_server(profile, NULL, NULL);
+    return _start_ss_local_server(profile, NULL, NULL, false);
 }
 
 int
 start_ss_local_server_with_callback(profile_t profile, ss_local_callback callback, void *udata)
 {
-    return _start_ss_local_server(profile, callback, udata);
+    return _start_ss_local_server(profile, callback, udata, false);
 }
 
 #endif

@@ -60,9 +60,13 @@ public:
             if (signal_count_ == signals_.size()) {
                 return fail(Errc::exhausted);
             }
-            SignalWatch &w = signals_[signal_count_++];
+            SignalWatch &w = signals_[signal_count_];
             w.program      = this;
-            (void)w.signal.open(loop_, w, signum);
+            Status opened = w.signal.open(loop_, w, signum);
+            if (w.signal.is_open()) {
+                ++signal_count_; // close() releases it even if starting failed
+            }
+            SS_TRY(opened);
         }
         (void)usr1;
         return {};

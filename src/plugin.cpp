@@ -178,6 +178,14 @@ start_obfsproxy(const char *plugin,
     return ret;
 }
 
+static const char *plugin_user = NULL;
+
+void
+set_plugin_user(const char *user)
+{
+    plugin_user = user;
+}
+
 int
 start_plugin(const char *plugin,
              const char *plugin_opts,
@@ -200,6 +208,10 @@ start_plugin(const char *plugin,
 
     stop_plugin();
     sub = ss_process_new(plugin);
+    if (ss_process_user(sub, plugin_user) != 0) {
+        stop_plugin();
+        return -1;
+    }
 #ifdef __MINGW32__
     sub_control_port = control_port;
 #endif

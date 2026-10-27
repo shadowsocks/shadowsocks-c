@@ -44,6 +44,25 @@ struct AclHooks {
     int (*match_host)(const char *host) = nullptr; // > 0 listed as bypass/block, < 0 as proxy, 0 neither
     int (*mode)()                       = nullptr; // BLACK_LIST or WHITE_LIST
     int (*outbound_blocked)(const char *host) = nullptr;
+
+    // ss-server: is a client at `peer` (an address) refused?
+    bool peer_denied(const char *peer) const noexcept
+    {
+        constexpr int kWhiteList = 1; // acl.h WHITE_LIST
+        int listed = match_host(peer);
+        return mode() == kWhiteList ? listed >= 0 : listed == 1;
+    }
+
+    // ss-server: may a client reach `target`?
+    bool target_blocked(const sockaddr *target) const noexcept
+    {
+        char ip[INET6_ADDRSTRLEN] = {};
+        const void *raw = target->sa_family == AF_INET
+                              ? static_cast<const void *>(&reinterpret_cast<const sockaddr_in *>(target)->sin_addr)
+                              : static_cast<const void *>(&reinterpret_cast<const sockaddr_in6 *>(target)->sin6_addr);
+        ss_inet_ntop(target->sa_family, raw, ip, sizeof(ip));
+        return outbound_blocked(ip) == 1;
+    }
 };
 
 struct TcpConfig {
@@ -166,7 +185,7 @@ private:
         stream,
         stopped, // server: failed the handshake; drain until timeout
     };
-    enum class Timed : std::uint8_t { none, delay, connect, idle };
+    enum class Timed : std::uint8_t { none, delay, handshake, connect, idle };
 
     event::Flow start(ss_socket_t fd) noexcept;
     event::Flow close() noexcept;
@@ -185,6 +204,7 @@ private:
     event::Flow connected() noexcept;
     event::Flow pump_to_upstream() noexcept;
     event::Flow pump_to_client() noexcept;
+    event::Flow half_close(ss_socket_t peer) noexcept;
     void update_interest() noexcept;
 
     enum class Pull : std::uint8_t { data, nothing, again, eof, error };
@@ -217,6 +237,10 @@ private:
     bool dns_done_     = false;
     bool dns_ok_       = false;
     bool replied_      = false; // first upstream bytes reached the client
+    // Half-close: one side has sent EOF, which went on to the other side as
+    // a shutdown(SHUT_WR); the other direction keeps flowing until its EOF.
+    bool client_eof_   = false;
+    bool upstream_eof_ = false;
     void *hook_state_  = nullptr;
     int tos_           = -1; // from the listener that accepted it
     sockaddr_storage dns_answer_{};
@@ -238,6 +262,8 @@ public:
     // Close every connection and listener. Run the loop until closed().
     void shutdown() noexcept;
     bool closed() const noexcept;
+    // Listening sockets the relay owns (and closes on shutdown).
+    std::size_t listeners() const noexcept { return listener_count_; }
 
     std::uint32_t live() const noexcept { return pool_.live(); }
     std::uint64_t refused() const noexcept { return refused_; }
@@ -282,8 +308,10 @@ private:
     bool accept_paused_         = false;
     std::uint64_t refused_      = 0;
     std::uint64_t last_refusal_log_ = 0;
+    std::uint64_t accept_retry_at_  = 0; // accept() failed hard (e.g. EMFILE): retry then
 
     event::DeadlineList<Connection> delay_list_;
+    event::DeadlineList<Connection> handshake_list_;
     event::DeadlineList<Connection> connect_list_;
     event::DeadlineList<Connection> idle_list_;
     event::Timer<TcpRelay, &TcpRelay::on_timer> timer_;

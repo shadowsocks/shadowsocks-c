@@ -817,6 +817,7 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
             snprintf(remote_str + len, buf_size - len, "|%s", remote_addr[i].host);
             len = strlen(remote_str);
         }
+        set_plugin_user(user); // it drops root along with us
         int err = start_plugin(plugin, plugin_opts, remote_str,
                                remote_port, plugin_host, plugin_port, MODE_CLIENT);
         if (err) {
@@ -949,6 +950,7 @@ Same behavior as `-T`; see that option for details. Short alias: `-T`.
         LOGI("running from root user");
     }
 
+    daemon_ready();
     ss::heap_seal();
     {
         int code = program.run();

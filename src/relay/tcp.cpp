@@ -33,6 +33,7 @@ namespace {
 
 constexpr std::uint64_t kDelayMs     = 50;  // wait for a first payload before connecting
 constexpr int kAcceptBurst           = 64;  // connections accepted per wakeup
+constexpr std::uint64_t kAcceptRetryMs = 1000; // pause after accept() runs out of fds
 constexpr int kPumpRounds            = 16;  // receives per direction per wakeup
 constexpr std::uint8_t kSocksVersion = 5;
 
@@ -144,6 +145,10 @@ Status TcpRelay::init(event::Loop &loop, Method &method, const TcpConfig &config
 
     const std::uint64_t timeout = static_cast<std::uint64_t>(std::max(config.timeout_secs, 1));
     delay_list_.set_timeout(kDelayMs);
+    // A handshake (SOCKS request, ss header, or the drain after a rejected
+    // one) gets the plain --timeout, not the day-long idle minimum, so idle
+    // sockets cannot hold the fixed pool.
+    handshake_list_.set_timeout(timeout * 1000);
     connect_list_.set_timeout(std::min<std::uint64_t>(MAX_CONNECT_TIMEOUT, timeout) * 1000);
     idle_list_.set_timeout(std::max<std::uint64_t>(MIN_TCP_IDLE_TIMEOUT, timeout) * 1000);
     SS_TRY(timer_.open(loop, *this));
@@ -183,9 +188,22 @@ void TcpRelay::accept_from(Listener &listener) noexcept
         if (fd < 0) {
 #endif
             int err = ss_socket_error();
-            if (err != EAGAIN && err != EWOULDBLOCK && err != EINTR) {
-                ERROR("accept");
+            if (err == EAGAIN || err == EWOULDBLOCK || err == EINTR) {
+                return;
             }
+            if (err == ECONNABORTED) {
+                continue;
+            }
+            // Out of descriptors or memory: the pending connection stays
+            // queued, so a level-triggered poll would spin. Back off.
+            std::uint64_t now = loop_->now();
+            if (now - last_refusal_log_ >= 1000 || last_refusal_log_ == 0) {
+                ERROR("accept");
+                last_refusal_log_ = now;
+            }
+            pause_accept();
+            accept_retry_at_ = now + kAcceptRetryMs;
+            schedule();
             return;
         }
         if (pool_.full()) {
@@ -203,9 +221,7 @@ void TcpRelay::accept_from(Listener &listener) noexcept
         if (config_.kind == Kind::server && config_.acl) {
             char peer[INET6_ADDRSTRLEN];
             peer_name(fd, peer, sizeof(peer));
-            if (peer[0] != '\0'
-                && ((config_.acl_hooks.mode() == BLACK_LIST && config_.acl_hooks.match_host(peer) == 1)
-                    || (config_.acl_hooks.mode() == WHITE_LIST && config_.acl_hooks.match_host(peer) >= 0))) {
+            if (peer[0] != '\0' && config_.acl_hooks.peer_denied(peer)) {
                 LOGE("Access denied from %s", peer);
                 ss_socket_close(fd);
                 continue;
@@ -268,9 +284,10 @@ void TcpRelay::set_deadline(Connection &conn, Connection::Timed which) noexcept
     if (conn.timed_ != which) {
         clear_deadline(conn);
     }
-    event::DeadlineList<Connection> *list = which == Connection::Timed::delay     ? &delay_list_
-                                            : which == Connection::Timed::connect ? &connect_list_
-                                                                                  : &idle_list_;
+    event::DeadlineList<Connection> *list = which == Connection::Timed::delay       ? &delay_list_
+                                            : which == Connection::Timed::handshake ? &handshake_list_
+                                            : which == Connection::Timed::connect   ? &connect_list_
+                                                                                    : &idle_list_;
     std::uint64_t now = loop_->now();
     list->touch(conn, now);
     conn.timed_ = which;
@@ -307,15 +324,20 @@ void TcpRelay::on_timer() noexcept
         };
     };
     delay_list_.expire(now, fire(Connection::Timed::delay));
+    handshake_list_.expire(now, fire(Connection::Timed::handshake));
     connect_list_.expire(now, fire(Connection::Timed::connect));
     idle_list_.expire(now, fire(Connection::Timed::idle));
+    if (accept_retry_at_ != 0 && accept_retry_at_ <= now) {
+        accept_retry_at_ = 0;
+        slot_freed();
+    }
     schedule();
 }
 
 void TcpRelay::schedule() noexcept
 {
-    std::uint64_t due = 0;
-    for (auto *list : { &delay_list_, &connect_list_, &idle_list_ }) {
+    std::uint64_t due = accept_retry_at_;
+    for (auto *list : { &delay_list_, &handshake_list_, &connect_list_, &idle_list_ }) {
         if (auto next = list->next_due()) {
             due = due == 0 ? *next : std::min(due, *next);
         }
@@ -427,9 +449,9 @@ Flow Connection::start(ss_socket_t fd) noexcept
     }
     const TcpConfig &cfg = relay_->config_;
     // Every connection is timed from the start, so a client that never
-    // finishes its handshake cannot hold a pool slot forever. Later stages
+    // finishes its handshake cannot hold a pool slot for long. Later stages
     // replace this with their own deadline.
-    relay_->set_deadline(*this, Timed::idle);
+    relay_->set_deadline(*this, Timed::handshake);
     switch (cfg.kind) {
     case Kind::local:
         if (verbose) {
@@ -550,7 +572,10 @@ Flow Connection::on_upstream(int events) noexcept
     if ((events & event::writable) && pump_to_upstream() == Flow::closed) {
         return Flow::closed;
     }
-    if ((events & (event::readable | event::failed)) && pump_to_client() == Flow::closed) {
+    // A rejected request (server_reject) leaves only the drain; the closing
+    // upstream must not be read.
+    if (stage_ == Stage::stream && (events & (event::readable | event::failed))
+        && pump_to_client() == Flow::closed) {
         return Flow::closed;
     }
     update_interest();
@@ -948,18 +973,11 @@ Flow Connection::server_header() noexcept
 Flow Connection::server_connect(const sockaddr *target) noexcept
 {
     TcpConfig &cfg = relay_->config_;
-    if (cfg.acl) {
-        char ip[INET6_ADDRSTRLEN] = {};
-        const void *raw = target->sa_family == AF_INET
-                              ? static_cast<const void *>(&reinterpret_cast<const sockaddr_in *>(target)->sin_addr)
-                              : static_cast<const void *>(&reinterpret_cast<const sockaddr_in6 *>(target)->sin6_addr);
-        ss_inet_ntop(target->sa_family, raw, ip, sizeof(ip));
-        if (cfg.acl_hooks.outbound_blocked(ip) == 1) {
-            if (verbose) {
-                LOGI("outbound blocked %s", ip);
-            }
-            return close();
+    if (cfg.acl && cfg.acl_hooks.target_blocked(target)) {
+        if (verbose) {
+            LOGI("outbound blocked %s", target_.host);
         }
+        return close();
     }
     auto fd = open_upstream(target->sa_family, cfg.upstream, false);
     if (!fd) {
@@ -982,6 +1000,7 @@ Flow Connection::server_connect(const sockaddr *target) noexcept
     }
     (void)to_upstream_.consume(*sent);
     stage_ = Stage::connecting;
+    relay_->set_deadline(*this, Timed::connect);
     update_interest();
     return Flow::proceed;
 }
@@ -990,9 +1009,7 @@ Flow Connection::server_connect(const sockaddr *target) noexcept
 
 Flow Connection::connected() noexcept
 {
-    if (client_kind()) {
-        relay_->set_deadline(*this, Timed::idle); // replaces the connect deadline
-    }
+    relay_->set_deadline(*this, Timed::idle); // replaces the connect deadline
     stage_ = Stage::stream;
     if (pump_to_upstream() == Flow::closed) {
         return Flow::closed;
@@ -1072,7 +1089,9 @@ Connection::Pull Connection::pull_into(ss_socket_t fd, bool decode, LeasedBuffer
         }
     }
     if (stage_ == Stage::stream) {
-        relay_->set_deadline(*this, Timed::idle);
+        // A half-closed connection gets the plain --timeout, not the
+        // day-long idle minimum.
+        relay_->set_deadline(*this, client_eof_ || upstream_eof_ ? Timed::handshake : Timed::idle);
     }
     std::span<const std::uint8_t> in(relay_->scratch_.data(), *r);
     if (decode) {
@@ -1099,6 +1118,9 @@ Connection::Pull Connection::pull_into(ss_socket_t fd, bool decode, LeasedBuffer
 
 Flow Connection::pump_to_upstream() noexcept
 {
+    if (client_eof_) {
+        return Flow::proceed; // nothing more comes from the client
+    }
     const bool decode = !client_kind();
     for (int round = 0; round < kPumpRounds; ++round) {
         if (!to_upstream_.empty()) {
@@ -1121,6 +1143,9 @@ Flow Connection::pump_to_upstream() noexcept
         case Pull::again:
             return Flow::proceed;
         case Pull::eof:
+            // Everything read has been flushed: pass the EOF on.
+            client_eof_ = true;
+            return half_close(upstream_.fd());
         case Pull::error:
             return close();
         }
@@ -1130,6 +1155,9 @@ Flow Connection::pump_to_upstream() noexcept
 
 Flow Connection::pump_to_client() noexcept
 {
+    if (upstream_eof_) {
+        return Flow::proceed; // nothing more comes from upstream
+    }
     const bool decode = client_kind();
     for (int round = 0; round < kPumpRounds; ++round) {
         if (!to_client_.empty()) {
@@ -1161,10 +1189,29 @@ Flow Connection::pump_to_client() noexcept
         case Pull::again:
             return Flow::proceed;
         case Pull::eof:
+            upstream_eof_ = true;
+            return half_close(client_.fd());
         case Pull::error:
             return close();
         }
     }
+    return Flow::proceed;
+}
+
+Flow Connection::half_close(ss_socket_t peer) noexcept
+{
+    if (client_eof_ && upstream_eof_) {
+        return close();
+    }
+#ifdef _WIN32
+    int how = SD_SEND;
+#else
+    int how = SHUT_WR;
+#endif
+    if (shutdown(peer, how) != 0) {
+        return close();
+    }
+    relay_->set_deadline(*this, Timed::handshake);
     return Flow::proceed;
 }
 
@@ -1187,8 +1234,8 @@ void Connection::update_interest() noexcept
         u = event::writable;
         break;
     case Stage::stream:
-        c = (to_upstream_.empty() ? event::readable : 0) | (to_client_.empty() ? 0 : event::writable);
-        u = (to_client_.empty() ? event::readable : 0) | (to_upstream_.empty() ? 0 : event::writable);
+        c = (to_upstream_.empty() && !client_eof_ ? event::readable : 0) | (to_client_.empty() ? 0 : event::writable);
+        u = (to_client_.empty() && !upstream_eof_ ? event::readable : 0) | (to_upstream_.empty() ? 0 : event::writable);
         break;
     }
     if (client_.is_open() && !client_.is_closing()) {

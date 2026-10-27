@@ -906,6 +906,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
             snprintf(remote_str + len, buf_size - len, "|%s", remote_addr[i].host);
             len = strlen(remote_str);
         }
+        set_plugin_user(user); // it drops root along with us
         int err = start_plugin(plugin, plugin_opts, remote_str,
                                remote_port, plugin_host, plugin_port,
 #ifdef __MINGW32__
@@ -1044,6 +1045,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     }
 #endif
 
+    daemon_ready();
     ss::heap_seal();
     {
         int code = program.run();

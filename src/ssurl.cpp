@@ -195,6 +195,9 @@ parse_query(const char *s, size_t len, ss_url_t *url)
             if (name_len == 6 && strncmp(s, "plugin", 6) == 0) {
                 char *value = percent_decode(eq + 1, (size_t)(pair_end - eq - 1));
                 char *semi  = strchr(value, ';');
+                // A repeated plugin= replaces the earlier one, options too.
+                ss_free(url->plugin);
+                ss_free(url->plugin_opts);
                 if (semi != NULL) {
                     *semi            = '\0';
                     url->plugin_opts = str_ndup(semi + 1, strlen(semi + 1));
@@ -248,6 +251,13 @@ ss_url_parse(const char *uri, ss_url_t *url)
     const char *hash = (const char *)memchr(body, '#', body_len);
     if (hash != NULL) {
         url->tag = percent_decode(hash + 1, body_len - (size_t)(hash - body) - 1);
+        /* It is only logged: no control characters (newlines, escapes)
+         * from a link may reach the log. */
+        for (char *c = url->tag; *c != '\0'; c++) {
+            if ((unsigned char)*c < 0x20 || *c == 0x7f) {
+                *c = '?';
+            }
+        }
         body_len = (size_t)(hash - body);
     }
 
@@ -314,6 +324,13 @@ ss_url_parse(const char *uri, ss_url_t *url)
     if (query != NULL) {
         size_t query_ofst = (size_t)(query - body) + 1;
         parse_query(body + query_ofst, body_len - query_ofst, url);
+    }
+    /* A link is often shared: let it name a plugin, but not a path to an
+     * arbitrary program, and no empty name. The plugin is looked up on PATH. */
+    if (url->plugin != NULL && (url->plugin[0] == '\0' || strchr(url->plugin, '/') != NULL
+                                || strchr(url->plugin, '\\') != NULL)) {
+        LOGE("the URL's plugin must be a plain program name, not a path");
+        goto fail;
     }
 
     return 0;

@@ -145,6 +145,11 @@ int
 run_as(const char *user)
 {
 #ifndef __MINGW32__
+    if (user[0] == '\0') {
+        /* An empty --user (say, an unset variable) must not keep root. */
+        LOGE("run_as user is empty");
+        return 0;
+    }
     if (user[0]) {
         /* Convert user to a long integer if it is a non-negative number.
          * -1 means it is a user name. */
@@ -174,6 +179,13 @@ run_as(const char *user)
             err = uid >= 0 ? getpwuid_r((uid_t)uid, &pwdbuf, buf, buflen, &pwd)
                   : getpwnam_r(user, &pwdbuf, buf, buflen, &pwd);
 
+            if (err == 0 && pwd && getuid() == pwd->pw_uid && geteuid() == pwd->pw_uid
+                && getgid() == pwd->pw_gid) {
+                /* Already that user (say, started by an ss-manager that has
+                 * switched to it): nothing to drop, and initgroups() would
+                 * need root. */
+                break;
+            }
             if (err == 0 && pwd) {
                 /* setgid first, because we may not be allowed to do it anymore after setuid */
                 if (setgid(pwd->pw_gid) != 0) {
@@ -779,12 +791,54 @@ usage(void)
     puts("Manual: https://shadowsocks.github.io/shadowsocks-c/");
 }
 
+#ifndef __MINGW32__
+static int daemon_ready_fd = -1;
+#endif
+
+void
+daemon_ready(void)
+{
+#ifndef __MINGW32__
+    if (daemon_ready_fd == -1) {
+        return;
+    }
+    char byte = 1;
+    ssize_t ignored = write(daemon_ready_fd, &byte, 1);
+    (void)ignored;
+    close(daemon_ready_fd);
+    daemon_ready_fd = -1;
+#endif
+}
+
 void
 daemonize(const char *path)
 {
 #ifndef __MINGW32__
     /* Our process ID and Session ID */
     pid_t pid, sid;
+
+    /* Open the pid file before forking, so a bad path fails the start
+     * instead of leaving an untracked daemon, and never through a symlink
+     * someone planted in a shared directory. */
+    int flags = O_WRONLY | O_CREAT | O_TRUNC;
+#ifdef O_NOFOLLOW
+    flags |= O_NOFOLLOW;
+#endif
+#ifdef O_CLOEXEC
+    flags |= O_CLOEXEC;
+#endif
+    int pid_fd = open(path, flags, 0644);
+    if (pid_fd == -1) {
+        LOGE("cannot open pid file %s: %s", path, strerror(errno));
+        FATAL("Invalid pid file");
+    }
+
+    /* The daemon says over this pipe when it is serving (daemon_ready());
+     * the starting process exits with success only then. */
+    int ready[2];
+    if (pipe(ready) != 0) {
+        FATAL("pipe");
+    }
 
     /* Fork off the parent process */
     pid = fork();
@@ -795,18 +849,29 @@ daemonize(const char *path)
     /* If we got a good PID, then
      * we can exit the parent process. */
     if (pid > 0) {
-        FILE *file = fopen(path, "w");
-        if (file == NULL) {
-            FATAL("Invalid pid file\n");
+        close(ready[1]);
+        char text[32];
+        int len = snprintf(text, sizeof(text), "%d", (int)pid);
+        if (write(pid_fd, text, (size_t)len) != len) {
+            ERROR("write pid file");
         }
-
-        fprintf(file, "%d", (int)pid);
-        fclose(file);
-        exit(EXIT_SUCCESS);
+        close(pid_fd);
+        char byte = 0;
+        ssize_t n;
+        do {
+            n = read(ready[0], &byte, 1);
+        } while (n < 0 && errno == EINTR);
+        /* EOF: the daemon exited (or exec'd) before it was ready. */
+        exit(n == 1 ? EXIT_SUCCESS : EXIT_FAILURE);
     }
+    close(pid_fd);
+    close(ready[0]);
+    (void)fcntl(ready[1], F_SETFD, FD_CLOEXEC); /* plugins must not hold it open */
+    daemon_ready_fd = ready[1];
 
-    /* Change the file mode mask */
-    umask(0);
+    /* Files the daemon creates (configs with passwords, control sockets)
+     * must not be world-writable. */
+    umask(022);
 
     /* Open any logs here */
 

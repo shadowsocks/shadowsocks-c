@@ -72,6 +72,10 @@ add_rule(rule_list_t *rules, rule_t *rule)
     rules->push_back(*rule);
 }
 
+#if SS_ENABLE_REGEX
+static pcre2_match_context *match_context = NULL;
+#endif
+
 int
 init_rule(rule_t *rule)
 {
@@ -86,11 +90,22 @@ init_rule(rule_t *rule)
         return *rule->literal != '\0' ? 1 : 0;
     }
 #if SS_ENABLE_REGEX
+    // Bounds the backtracking a rule can do on a client-chosen host name;
+    // made here, at startup, not on a first match.
+    if (match_context == NULL) {
+        match_context = pcre2_match_context_create(NULL);
+        if (match_context == NULL) {
+            return -1;
+        }
+        pcre2_set_match_limit(match_context, 100000);
+        pcre2_set_depth_limit(match_context, 1000);
+    }
     if (rule->pattern_re == NULL) {
         int errcode;
         PCRE2_SIZE erroffset;
+        // Host names are case-insensitive.
         rule->pattern_re = pcre2_compile((PCRE2_SPTR)rule->pattern,
-            PCRE2_ZERO_TERMINATED, 0, &errcode, &erroffset, NULL);
+            PCRE2_ZERO_TERMINATED, PCRE2_CASELESS, &errcode, &erroffset, NULL);
         if (rule->pattern_re == NULL) {
             PCRE2_UCHAR errbuf[256];
             pcre2_get_error_message(errcode, errbuf, sizeof(errbuf));
@@ -135,7 +150,7 @@ rule_matches(rule_t *rule, const char *name, size_t name_len)
     }
 #if SS_ENABLE_REGEX
     return pcre2_match(rule->pattern_re, (PCRE2_SPTR)name,
-                       name_len, 0, 0, rule->match_data, NULL) >= 0;
+                       name_len, 0, 0, rule->match_data, match_context) >= 0;
 #else
     return false;
 #endif
@@ -147,6 +162,10 @@ lookup_rule(rule_list_t *rules, const char *name, size_t name_len)
     if (name == NULL) {
         name     = "";
         name_len = 0;
+    }
+    // "example.com." is the same name as "example.com".
+    while (name_len > 0 && name[name_len - 1] == '.') {
+        name_len--;
     }
 
     return rules->find_if([&](rule_t &rule) { return rule_matches(&rule, name, name_len); });

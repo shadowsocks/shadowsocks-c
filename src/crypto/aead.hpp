@@ -68,6 +68,12 @@ struct MasterKey {
     AeadSpec spec;
     std::array<std::uint8_t, kMaxKey> bytes{};
 
+    MasterKey() noexcept = default;
+    MasterKey(const AeadSpec &s, const std::array<std::uint8_t, kMaxKey> &b) noexcept : spec(s), bytes(b) {}
+    MasterKey(const MasterKey &) noexcept            = default;
+    MasterKey &operator=(const MasterKey &) noexcept = default;
+    ~MasterKey() { sodium_memzero(bytes.data(), bytes.size()); }
+
     std::span<const std::uint8_t> key() const noexcept { return { bytes.data(), spec.key_len }; }
 
     // EVP_BytesToKey(MD5) from a password, as the C implementation does.
@@ -168,6 +174,12 @@ private:
 
 class AeadTcpDecryptor {
 public:
+    AeadTcpDecryptor() noexcept = default;
+    AeadTcpDecryptor(const AeadTcpDecryptor &) = delete;
+    AeadTcpDecryptor &operator=(const AeadTcpDecryptor &) = delete;
+    // The reassembly buffer held decrypted payload.
+    ~AeadTcpDecryptor() { sodium_memzero(buffer_.storage().data(), buffer_.storage().size()); }
+
     Status init(const MasterKey &master, ReplayFilter filter) noexcept;
 
     struct Step {

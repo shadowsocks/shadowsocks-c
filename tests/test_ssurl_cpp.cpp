@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // ss:// URI parsing (src/ssurl.cpp): SIP002, the legacy form and malformed
 // input.
+#include <cstdio>
+#include <initializer_list>
 #include <cstddef>
 #include <cstring>
 
@@ -57,6 +59,25 @@ void test_sip002_plugin()
     SS_CHECK(streq(u.plugin, "obfs-local"));
     SS_CHECK(streq(u.plugin_opts, "obfs=http"));
     SS_CHECK(streq(u.tag, "tag"));
+    ss_url_free(&u);
+}
+
+/* A shared link may name a plugin but not a path to a program; a repeated
+ * plugin= replaces the first; the tag cannot carry control characters. */
+void test_sip002_plugin_hardening()
+{
+    ss_url_t u;
+    const char *base = "ss://YWVzLTI1Ni1nY206cGFzc3dvcmQ@192.168.100.1:8888/?plugin=";
+    char url[256];
+    for (const char *bad : { "%2Ftmp%2Fevil", "..%2Fevil", "C:%5Cevil.exe", "", "%3Bopts" }) {
+        std::snprintf(url, sizeof(url), "%s%s", base, bad);
+        SS_CHECK(ss_url_parse(url, &u) == -1);
+    }
+    std::snprintf(url, sizeof(url), "%s%s", base, "first%3Ba&plugin=second%3Bb#line%0Abreak%1B");
+    SS_CHECK(ss_url_parse(url, &u) == 0);
+    SS_CHECK(streq(u.plugin, "second"));
+    SS_CHECK(streq(u.plugin_opts, "b"));
+    SS_CHECK(streq(u.tag, "line?break?"));
     ss_url_free(&u);
 }
 
@@ -212,6 +233,7 @@ int main()
     SS_RUN(test_sip002_basic);
     SS_RUN(test_sip002_tag);
     SS_RUN(test_sip002_plugin);
+    SS_RUN(test_sip002_plugin_hardening);
     SS_RUN(test_sip002_trailing_slash);
     SS_RUN(test_sip002_ipv6);
     SS_RUN(test_sip002_plain_userinfo);

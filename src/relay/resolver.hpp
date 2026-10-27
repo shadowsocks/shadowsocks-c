@@ -67,6 +67,7 @@ private:
         std::uint16_t port = 0;
         std::uint8_t pending = 2; // A and AAAA
         bool has4 = false, has6 = false;
+        bool cancelled = false; // shutdown() ended a lookup: report no address
         sockaddr_in v4{};
         sockaddr_in6 v6{};
     };

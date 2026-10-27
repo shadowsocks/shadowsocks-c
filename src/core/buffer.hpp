@@ -39,6 +39,8 @@ public:
 
     constexpr std::size_t capacity() const noexcept { return N; }
     constexpr std::size_t size() const noexcept { return len_; }
+    // All of the storage, whatever is in use, for wiping secrets.
+    Bytes storage() noexcept { return { data_.data(), N }; }
     constexpr bool empty() const noexcept { return len_ == 0; }
     constexpr bool full() const noexcept { return idx_ + len_ == N; }
 

@@ -54,9 +54,14 @@ bool parse_key(const char *base64, std::span<std::uint8_t> key, bool exact) noex
     // One spare byte tells an over-long key from an exact one; base64_decode
     // never writes past the size it is given.
     std::uint8_t out[kMaxKey + 1];
-    int want = static_cast<int>(key.size()) + (exact ? 1 : 0);
+    int want = static_cast<int>(key.size()) + 1;
     int n    = base64_decode(out, base64, want);
     bool ok  = exact ? n == static_cast<int>(key.size()) : n >= static_cast<int>(key.size());
+    if (ok && n > static_cast<int>(key.size())) {
+        // Kept for existing configs, but two different strings must not
+        // silently be the same key.
+        LOGE("the key is longer than %zu bytes; only the first %zu are used", key.size(), key.size());
+    }
     if (ok) {
         std::memcpy(key.data(), out, key.size());
     }

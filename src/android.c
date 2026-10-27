@@ -80,16 +80,26 @@ protect_socket(int fd)
         return -1;
     }
 
-    char ret = 0;
-
-    if (recv(sock, &ret, 1, 0) == -1) {
-        ERROR("[android] recv");
+    // The VPN service answers one byte: 0 once the socket is protected.
+    // Anything else, or no answer, leaves the socket routed into the VPN.
+    char ret = 1;
+    ssize_t n = recv(sock, &ret, 1, 0);
+    if (n != 1) {
+        if (n == -1) {
+            ERROR("[android] recv");
+        } else {
+            LOGE("[android] protect_path closed without an answer");
+        }
         close(sock);
         return -1;
     }
 
     close(sock);
-    return ret;
+    if (ret != 0) {
+        LOGE("[android] failed to protect socket %d", fd);
+        return -1;
+    }
+    return 0;
 }
 
 extern char *stat_path;

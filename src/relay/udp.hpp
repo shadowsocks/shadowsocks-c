@@ -58,6 +58,8 @@ struct UdpConfig {
     std::uint64_t *tx             = nullptr;
     std::uint64_t *rx             = nullptr;
     void (*on_traffic)()          = nullptr;
+    bool acl                      = false; // server: with `acl_hooks` set, as for TCP
+    AclHooks acl_hooks;
 };
 
 // Bind the UDP socket clients send to (ss-redir: transparent, with the
@@ -149,7 +151,10 @@ private:
                         RefPtr<Shared2022> shared, std::span<const std::uint8_t> payload) noexcept;
     void reply(UdpSession &session) noexcept;
     UdpSession *session_for(std::uint8_t listener, const sockaddr_storage &client, int family) noexcept;
-    RefPtr<Shared2022> shared_for(const std::array<std::uint8_t, crypto::kSessionIdLen> &id) noexcept;
+    RefPtr<Shared2022> shared_find(const std::array<std::uint8_t, crypto::kSessionIdLen> &id) noexcept;
+    RefPtr<Shared2022> shared_new() noexcept;
+    bool shared_insert(const std::array<std::uint8_t, crypto::kSessionIdLen> &id,
+                       const RefPtr<Shared2022> &ref) noexcept;
     void expire(UdpSession &session) noexcept;
     Result<ss_socket_t> open_upstream_socket(int family) noexcept;
     static void resolved(const ResolveCallback &cb, const sockaddr *address) noexcept;

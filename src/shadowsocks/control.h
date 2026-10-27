@@ -31,10 +31,12 @@ int ss_local_start(const profile_t *profile, ss_local_callback callback, void *u
 void ss_local_stop(ss_local_handle *handle);
 
 /* Wait for the server thread and return what the server returned (0 after
- * a requested stop). Call it once. */
+ * a requested stop). Later or concurrent calls return the same value. */
 int ss_local_wait(ss_local_handle *handle);
 
-/* Release the handle, stopping and waiting for the server first if needed. */
+/* Release the handle, stopping and waiting for the server first if needed.
+ * The handle is freed: no other thread may still be calling stop or wait
+ * on it, or call them afterwards. */
 void ss_local_destroy(ss_local_handle *handle);
 
 #ifdef __cplusplus

@@ -327,7 +327,19 @@ json_value * json_parse_ex (json_settings * settings,
                     uc_b2 = (uc_b3 << 4) | uc_b4;
                     uchar = (uc_b1 << 8) | uc_b2;
 
-                    if ((uchar & 0xF800) == 0xD800) {
+                    if (uchar == 0) {
+                        // Every string ends up as a C string: a NUL would
+                        // silently cut it short.
+                        sprintf (error, "Invalid escape \\u0000 (at %d:%d)", line_and_col);
+                        goto e_failed;
+                    }
+
+                    if ((uchar & 0xFC00) == 0xDC00) {
+                        sprintf (error, "Unpaired low surrogate (at %d:%d)", line_and_col);
+                        goto e_failed;
+                    }
+
+                    if ((uchar & 0xFC00) == 0xD800) {
                         json_uchar uchar2;
                         
                         if (end - state.ptr <= 6 || (*++ state.ptr) != '\\' || (*++ state.ptr) != 'u' ||
@@ -343,8 +355,13 @@ json_value * json_parse_ex (json_settings * settings,
                         uc_b1 = (uc_b1 << 4) | uc_b2;
                         uc_b2 = (uc_b3 << 4) | uc_b4;
                         uchar2 = (uc_b1 << 8) | uc_b2;
-                        
-                        uchar = 0x010000 | ((uchar & 0x3FF) << 10) | (uchar2 & 0x3FF);
+
+                        if ((uchar2 & 0xFC00) != 0xDC00) {
+                            sprintf (error, "Invalid surrogate pair (at %d:%d)", line_and_col);
+                            goto e_failed;
+                        }
+
+                        uchar = 0x10000 + ((uchar & 0x3FF) << 10) + (uchar2 & 0x3FF);
                     }
 
                     if (sizeof (json_char) >= sizeof (json_uchar) || (uchar <= 0x7F))

@@ -382,13 +382,14 @@ read_jconf(const char *file)
             json_value *value = obj->u.object.values[i].value;
             if (strcmp(name, "server") == 0) {
                 if (value->type == json_array) {
-                    for (j = 0; j < value->u.array.length; j++) {
-                        if (j >= MAX_REMOTE_NUM) {
-                            break;
+                    conf.remote_num = 0;
+                    for (j = 0; j < value->u.array.length && conf.remote_num < MAX_REMOTE_NUM; j++) {
+                        char *host = to_string(value->u.array.values[j]);
+                        if (host == NULL) {
+                            continue; // a null entry is not an address
                         }
-                        json_value *v  = value->u.array.values[j];
-                        parse_conf_addr(to_string(v), conf.remote_addr + j);
-                        conf.remote_num = j + 1;
+                        parse_conf_addr(host, conf.remote_addr + conf.remote_num);
+                        conf.remote_num++;
                     }
                 } else if (value->type == json_string) {
                     parse_conf_addr(to_string(value), conf.remote_addr);
@@ -396,16 +397,18 @@ read_jconf(const char *file)
                 }
             } else if (strcmp(name, "port_password") == 0) {
                 if (value->type == json_object) {
-                    for (j = 0; j < value->u.object.length; j++) {
-                        if (j >= MAX_PORT_NUM) {
-                            break;
-                        }
+                    // Entries are packed: a skipped one leaves no hole.
+                    conf.port_password_num = 0;
+                    for (j = 0; j < value->u.object.length && conf.port_password_num < MAX_PORT_NUM; j++) {
                         json_value *v = value->u.object.values[j].value;
                         if (v->type == json_string) {
-                            conf.port_password[j].port = conf_strndup(
+                            int k = conf.port_password_num++;
+                            conf.port_password[k].port = conf_strndup(
                                 std::string_view(value->u.object.values[j].name, value->u.object.values[j].name_length));
-                            conf.port_password[j].password = to_string(v);
-                            conf.port_password_num         = j + 1;
+                            conf.port_password[k].password = to_string(v);
+                        } else {
+                            LOGE("ignoring the port_password entry for %s: the password must be a string",
+                                 value->u.object.values[j].name);
                         }
                     }
                 }
