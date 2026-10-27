@@ -40,14 +40,9 @@ Status Resolver::init(event::Loop &loop, const char *nameservers, bool ipv6_firs
         ares_library_cleanup();
         return fail(Errc::config);
     }
-    auto abandon = [this] {
-        ares_destroy(channel_);
-        channel_ = nullptr;
-        ares_library_cleanup();
-    };
     if (nameservers != nullptr && ares_set_servers_ports_csv(channel_, nameservers) != ARES_SUCCESS) {
         LOGE("failed to set nameservers %s", nameservers);
-        abandon();
+        abandon_channel();
         return fail(Errc::config);
     }
     loop_       = &loop;
@@ -56,10 +51,18 @@ Status Resolver::init(event::Loop &loop, const char *nameservers, bool ipv6_firs
         w.owner = this;
     }
     if (Status opened = timer_.open(loop, *this); !opened) {
-        abandon();
+        abandon_channel();
         return opened;
     }
     return {};
+}
+
+// Undo init() after the channel was created.
+void Resolver::abandon_channel() noexcept
+{
+    ares_destroy(channel_);
+    channel_ = nullptr;
+    ares_library_cleanup();
 }
 
 Status Resolver::resolve(const char *host, std::uint16_t port, const ResolveCallback &cb) noexcept

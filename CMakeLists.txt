@@ -139,6 +139,7 @@ if (ENABLE_COVERAGE)
                         --include ${PROJECT_SOURCE_DIR}/src/*
                         --ignore-errors mismatch,unused,empty,gcov,inconsistent
                 COMMAND ${LCOV_EXECUTABLE} --list ${PROJECT_BINARY_DIR}/coverage.info
+                        --ignore-errors inconsistent
                 COMMAND ${GENHTML_EXECUTABLE} ${PROJECT_BINARY_DIR}/coverage.info
                         --ignore-errors inconsistent
                         --output-directory ${PROJECT_BINARY_DIR}/coverage-html

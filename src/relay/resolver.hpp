@@ -82,6 +82,7 @@ private:
     static void sock_state(void *data, ares_socket_t s, int readable, int writable) noexcept;
     static void on_host(void *arg, int status, int timeouts, hostent *he) noexcept;
     void on_timer() noexcept;
+    void abandon_channel() noexcept;
     void rearm() noexcept;
     void finish(Query *q, int status) noexcept;
     void on_closed_all() noexcept;
