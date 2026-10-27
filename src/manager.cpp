@@ -44,6 +44,7 @@
 #include <netdb.h>
 #include <errno.h>
 #include <new>
+#include <string_view>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -115,13 +116,15 @@ udp_sender_uid(const struct sockaddr_storage *from, uid_t *uid)
     if (fgets(line, sizeof(line), f) != NULL) { // header
         while (!found && fgets(line, sizeof(line), f) != NULL) {
             char local[64];
-            unsigned port;
-            unsigned long owner;
+            char port_hex[9];
+            char owner_dec[21];
             // sl local_address rem_address st tx:rx tr:when retrnsmt uid
-            if (sscanf(line, " %*s %63[0-9A-Fa-f]:%x %*s %*s %*s %*s %*s %lu", local, &port, &owner) != 3
-                || port != want_port) {
+            if (sscanf(line, " %*s %63[0-9A-Fa-f]:%8[0-9A-Fa-f] %*s %*s %*s %*s %*s %20[0-9]",
+                       local, port_hex, owner_dec) != 3
+                || strtoul(port_hex, NULL, 16) != want_port) {
                 continue;
             }
+            unsigned long owner = strtoul(owner_dec, NULL, 10);
             // The kernel prints each 32-bit word of the address as a host
             // order integer; zeros mean the socket is unbound (wildcard).
             uint8_t bytes[16];
@@ -1041,13 +1044,15 @@ is_managed_server(int pid)
     char cmdline[4096];
     size_t n = fread(cmdline, 1, sizeof(cmdline), f);
     fclose(f);
-    for (size_t i = 0; i < n;) {
-        const char *arg = cmdline + i;
-        size_t len      = strnlen(arg, n - i);
-        if (len == strlen("--manager-address") && memcmp(arg, "--manager-address", len) == 0) {
+    // NUL-separated arguments; the last one may be cut short.
+    std::string_view rest(cmdline, n);
+    while (!rest.empty()) {
+        std::string_view::size_type nul = rest.find('\0');
+        std::string_view arg(rest.data(), nul != std::string_view::npos ? nul : rest.size());
+        if (arg == "--manager-address") {
             return true;
         }
-        i += len + 1;
+        rest.remove_prefix(nul != std::string_view::npos ? nul + 1 : rest.size());
     }
     return false;
 #else

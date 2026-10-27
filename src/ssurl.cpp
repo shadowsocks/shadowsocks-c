@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <span>
 
 #include "base64.h"
 #include "ssurl.h"
@@ -253,9 +254,9 @@ ss_url_parse(const char *uri, ss_url_t *url)
         url->tag = percent_decode(hash + 1, body_len - (size_t)(hash - body) - 1);
         /* It is only logged: no control characters (newlines, escapes)
          * from a link may reach the log. */
-        for (char *c = url->tag; *c != '\0'; c++) {
-            if ((unsigned char)*c < 0x20 || *c == 0x7f) {
-                *c = '?';
+        for (char &c : std::span<char>(url->tag, strlen(url->tag))) {
+            if ((unsigned char)c < 0x20 || c == 0x7f) {
+                c = '?';
             }
         }
         body_len = (size_t)(hash - body);

@@ -31,6 +31,10 @@ function(ss_project_options target)
         # it when they are rewritten.
         target_compile_options(${target} PRIVATE
             $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti -fno-threadsafe-statics>)
+        # libstdc++ 15 enables its assertions at -O0, and they call
+        # __glibcxx_assert_fail from the C++ runtime, which the programs and
+        # libshadowsocks-c must not need (scripts/check_cxx_runtime.py).
+        target_compile_definitions(${target} PRIVATE $<$<COMPILE_LANGUAGE:CXX>:_GLIBCXX_NO_ASSERTIONS>)
         # GCC's C++ -Wall adds -Wsign-compare and -Wclass-memaccess, which C's
         # -Wall does not have. Modules converted from C keep the warning set
         # they were written against; ss_strict_warnings() turns both back on.

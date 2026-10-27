@@ -4,12 +4,16 @@
 #include <stdlib.h>
 #include <string.h>
 #include "utils.h"
+#include <algorithm>
+#include <array>
+#include <string_view>
 #ifdef _WIN32
 #include <winsock2.h>
 #include <windows.h>
 #else
 #include <fcntl.h>
 #include <grp.h>
+#include <limits.h>
 #include <pwd.h>
 #include <signal.h>
 #include <spawn.h>
@@ -118,32 +122,51 @@ ss_process_user(struct ss_process *process, const char *user)
 
 /* The executable execve() runs: `program` itself if it names a path, or the
  * first match on PATH, as posix_spawnp() would find it. */
-static char *
-find_program(const char *program)
+using ProgramPath = std::array<char, PATH_MAX>;
+
+static bool
+set_path(ProgramPath &out, std::string_view dir, std::string_view program)
 {
-    if (strchr(program, '/') != NULL) {
-        return copy_string(program);
+    std::string_view slash = dir.empty() ? "" : "/";
+    if (dir.size() + slash.size() + program.size() >= out.size()) {
+        return false;
     }
-    const char *path = getenv("PATH");
-    if (path == NULL || *path == '\0') {
+    auto end = std::copy(dir.begin(), dir.end(), out.begin());
+    end      = std::copy(slash.begin(), slash.end(), end);
+    end      = std::copy(program.begin(), program.end(), end);
+    *end     = '\0';
+    return true;
+}
+
+static std::string_view
+env_value(const char *name)
+{
+    const char *value = getenv(name);
+    return value != NULL ? std::string_view(value) : std::string_view();
+}
+
+static bool
+find_program(std::string_view program, ProgramPath &out)
+{
+    if (program.find('/') != std::string_view::npos) {
+        return set_path(out, {}, program);
+    }
+    std::string_view path = env_value("PATH");
+    if (path.empty()) {
         path = "/usr/local/bin:/usr/bin:/bin";
     }
-    size_t room = strlen(path) + strlen(program) + 2;
-    char *candidate = (char *)ss_malloc(room); // heap-ok: plugin start, startup
-    for (const char *dir = path;; ) {
-        const char *colon = strchr(dir, ':');
-        size_t len = colon != NULL ? (size_t)(colon - dir) : strlen(dir);
-        snprintf(candidate, room, "%.*s%s%s", (int)len, dir, len > 0 ? "/" : "", program);
-        if (access(candidate, X_OK) == 0) {
-            return candidate;
+    for (;;) {
+        // Not substr(): it can throw, which would pull in the C++ runtime.
+        std::string_view::size_type colon = path.find(':');
+        std::string_view dir(path.data(), colon != std::string_view::npos ? colon : path.size());
+        if (set_path(out, dir, program) && access(out.data(), X_OK) == 0) {
+            return true;
         }
-        if (colon == NULL) {
-            break;
+        if (colon == std::string_view::npos) {
+            return false;
         }
-        dir = colon + 1;
+        path.remove_prefix(colon + 1);
     }
-    free(candidate); // heap-ok: plugin start, startup
-    return NULL;
 }
 
 /* In the forked child: lose root, but keep the right to bind ports below
@@ -180,16 +203,14 @@ drop_in_child(const struct ss_process *process)
 static int
 fork_as_user(struct ss_process *process, char **env)
 {
-    char *path = find_program(process->program);
-    if (path == NULL) {
+    ProgramPath path;
+    if (!find_program(process->program, path)) {
         return ENOENT;
     }
     /* The child reports a failed switch or exec through this pipe. */
     int report[2];
     if (pipe(report) != 0) {
-        int error = errno;
-        free(path); // heap-ok: plugin start, startup
-        return error;
+        return errno;
     }
     (void)fcntl(report[1], F_SETFD, FD_CLOEXEC);
     pid_t pid = fork();
@@ -204,7 +225,7 @@ fork_as_user(struct ss_process *process, char **env)
         signal(SIGINT, SIG_DFL);
         int error = EPERM;
         if (drop_in_child(process) == 0) {
-            execve(path, process->argv, env); // NOLINT(clang-analyzer-optin.taint.GenericTaint): the PATH lookup posix_spawnp() would do
+            execve(path.data(), process->argv, env); // NOLINT(clang-analyzer-optin.taint.GenericTaint): the PATH lookup posix_spawnp() would do
             error = errno;
         }
         ssize_t ignored = write(report[1], &error, sizeof(error));
@@ -227,7 +248,6 @@ fork_as_user(struct ss_process *process, char **env)
         }
     }
     close(report[0]);
-    free(path); // heap-ok: plugin start, startup
     return error;
 }
 

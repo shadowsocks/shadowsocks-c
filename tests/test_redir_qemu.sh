@@ -222,6 +222,7 @@ SERIAL_LOG="$WORK_DIR/serial.log"
 
 qemu-system-x86_64 \
     $KVM_FLAG \
+    -cpu max \
     -m 512 \
     -kernel "$WORK_DIR/vmlinuz" \
     -initrd "$WORK_DIR/initramfs.gz" \
