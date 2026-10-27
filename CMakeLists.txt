@@ -127,6 +127,8 @@ endif()
 
 # Coverage report (requires ENABLE_COVERAGE=ON, lcov and genhtml)
 # Usage: make coverage (after running ctest / integration tests)
+# gcov 15 can record a lambda's lines as hit but the lambda itself as not;
+# lcov 2 treats that as fatal ("inconsistent"), so it is only a warning here.
 if (ENABLE_COVERAGE)
     find_program(LCOV_EXECUTABLE lcov)
     find_program(GENHTML_EXECUTABLE genhtml)
@@ -135,9 +137,10 @@ if (ENABLE_COVERAGE)
                 COMMAND ${LCOV_EXECUTABLE} --capture --directory ${PROJECT_BINARY_DIR}
                         --output-file ${PROJECT_BINARY_DIR}/coverage.info
                         --include ${PROJECT_SOURCE_DIR}/src/*
-                        --ignore-errors mismatch,unused,empty,gcov
+                        --ignore-errors mismatch,unused,empty,gcov,inconsistent
                 COMMAND ${LCOV_EXECUTABLE} --list ${PROJECT_BINARY_DIR}/coverage.info
                 COMMAND ${GENHTML_EXECUTABLE} ${PROJECT_BINARY_DIR}/coverage.info
+                        --ignore-errors inconsistent
                         --output-directory ${PROJECT_BINARY_DIR}/coverage-html
                 COMMAND ${CMAKE_COMMAND} -E echo "Coverage report: ${PROJECT_BINARY_DIR}/coverage-html/index.html"
                 WORKING_DIRECTORY ${PROJECT_BINARY_DIR}

@@ -182,7 +182,7 @@ jobs:
           {
             echo '### Coverage (src/, unit + stress tests)'
             echo '```'
-            lcov --list build/coverage.info --ignore-errors unused,empty
+            lcov --list build/coverage.info --ignore-errors unused,empty,inconsistent
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
