@@ -245,6 +245,7 @@ main(int argc, char **argv)
 
     char *plugin      = NULL;
     char *plugin_opts = NULL;
+    int plugin_mode = TCP_ONLY;
     char *plugin_host = NULL;
     char *plugin_port = NULL;
     char tmp_port[8];
@@ -392,6 +393,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
 \snippet{doc} utils.cpp cli_long_mptcp
 \snippet{doc} utils.cpp cli_long_plugin
 \snippet{doc} utils.cpp cli_long_plugin_opts
+\snippet{doc} utils.cpp cli_long_plugin_mode
 \snippet{doc} utils.cpp cli_long_reuse_port
 \snippet{doc} utils.cpp cli_long_tcp_incoming_sndbuf
 \snippet{doc} utils.cpp cli_long_tcp_incoming_rcvbuf
@@ -432,6 +434,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         { "mptcp",       no_argument,       NULL, GETOPT_VAL_MPTCP       },
         { "plugin",      required_argument, NULL, GETOPT_VAL_PLUGIN      },
         { "plugin-opts", required_argument, NULL, GETOPT_VAL_PLUGIN_OPTS },
+        { "plugin-mode", required_argument, NULL, GETOPT_VAL_PLUGIN_MODE },
         { "reuse-port",  no_argument,       NULL, GETOPT_VAL_REUSE_PORT  },
         { "tcp-incoming-sndbuf", required_argument, NULL, GETOPT_VAL_TCP_INCOMING_SNDBUF },
         { "tcp-incoming-rcvbuf", required_argument, NULL, GETOPT_VAL_TCP_INCOMING_RCVBUF },
@@ -444,6 +447,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     };
 
     int mode_set = 0;
+    int plugin_mode_set = 0;
     int ipv6first_set = 0;
     opterr = 0;
 
@@ -501,6 +505,10 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
             break;
         case GETOPT_VAL_PLUGIN_OPTS:
             plugin_opts = optarg;
+            break;
+        case GETOPT_VAL_PLUGIN_MODE:
+            plugin_mode = parse_plugin_mode(optarg);
+            plugin_mode_set = 1;
             break;
         case GETOPT_VAL_KEY:
             key = optarg;
@@ -680,6 +688,9 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         if (plugin_opts == NULL) {
             plugin_opts = conf->plugin_opts;
         }
+        if (!plugin_mode_set) {
+            plugin_mode = conf->plugin_mode;
+        }
         if (tunnel_addr_str == NULL) {
             tunnel_addr_str = conf->tunnel_address;
         }
@@ -776,7 +787,11 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     }
 
     if (plugin != NULL) {
-        uint16_t port = get_local_port();
+        if (!plugin_mode_is_subset(plugin_mode, mode)) {
+            FATAL("plugin_mode must be a subset of mode");
+        }
+        int with_udp = mode_has_udp(mode) && mode_has_udp(plugin_mode);
+        uint16_t port = get_local_port(with_udp);
         if (port == 0) {
             FATAL("failed to find a free port");
         }
@@ -790,7 +805,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
 
 #ifdef __MINGW32__
         memset(&plugin_watcher, 0, sizeof(plugin_watcher));
-        plugin_watcher.port = get_local_port();
+        plugin_watcher.port = get_local_port(0);
         if (plugin_watcher.port == 0) {
             LOGE("failed to assign a control port for plugin");
         }
@@ -912,7 +927,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
 #ifdef __MINGW32__
                                plugin_watcher.port,
 #endif
-                               MODE_CLIENT);
+                               ROLE_CLIENT);
         if (err) {
             ERROR("start_plugin");
             FATAL("failed to start the plugin");
@@ -941,7 +956,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
     for (i = 0; i < remote_num; i++) {
         char *host = remote_addr[i].host;
         char *port = remote_addr[i].port == NULL ? remote_port : remote_addr[i].port;
-        if (plugin != NULL) {
+        if (plugin != NULL && mode_has_tcp(plugin_mode)) {
             host = plugin_host;
             port = plugin_port;
         }
@@ -950,7 +965,7 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         }
         remote_count++;
 
-        if (plugin != NULL)
+        if (plugin != NULL && mode_has_tcp(plugin_mode))
             break;
     }
 
@@ -1009,6 +1024,10 @@ Same behavior as `-V`; see that option for details. Short alias: `-V`.
         LOGI("UDP relay enabled");
         char *host = remote_addr[0].host;
         char *port = remote_addr[0].port == NULL ? remote_port : remote_addr[0].port;
+        if (plugin != NULL && mode_has_udp(plugin_mode)) {
+            host = plugin_host;
+            port = plugin_port;
+        }
         ss::relay::UdpConfig udp_config;
         udp_config.kind              = ss::relay::Kind::tunnel;
         udp_config.tunnel_target     = tcp_config.tunnel_target;

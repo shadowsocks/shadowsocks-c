@@ -49,6 +49,25 @@ extern "C" {
 #define TCP_AND_UDP  1
 #define UDP_ONLY     3
 
+static inline int
+mode_has_tcp(int mode)
+{
+    return mode != UDP_ONLY;
+}
+
+static inline int
+mode_has_udp(int mode)
+{
+    return mode != TCP_ONLY;
+}
+
+static inline int
+plugin_mode_is_subset(int plugin_mode, int mode)
+{
+    return (!mode_has_tcp(plugin_mode) || mode_has_tcp(mode))
+           && (!mode_has_udp(plugin_mode) || mode_has_udp(mode));
+}
+
 typedef struct {
     char *port;
     char *password;
@@ -76,6 +95,7 @@ typedef struct {
     char *user;
     char *plugin;
     char *plugin_opts;
+    int   plugin_mode;
     int fast_open;
     int reuse_port;
     int tcp_incoming_sndbuf;
@@ -107,6 +127,7 @@ void parse_addr(const char *str, ss_addr_t *addr);
 void free_addr(ss_addr_t *addr);
 int parse_server_endpoint(const char *str, ss_addr_t *addr);
 int complete_server_ports(ss_addr_t *addr, int count, const char *fallback, int plugin);
+int parse_plugin_mode(const char *mode_str);
 
 #ifdef __cplusplus
 }

@@ -273,6 +273,46 @@ test_server_endpoints()
     free_addr(&addr[1]);
 }
 
+void
+test_plugin_modes()
+{
+    struct ModeCase {
+        const char *name;
+        int mode;
+    };
+    constexpr ModeCase cases[] = {
+        { "tcp_only", TCP_ONLY },
+        { "udp_only", UDP_ONLY },
+        { "tcp_and_udp", TCP_AND_UDP },
+    };
+    SS_CHECK(parse_plugin_mode(nullptr) == TCP_ONLY);
+    SS_CHECK(parse_plugin_mode("unknown") == TCP_ONLY);
+
+    char path[4096];
+    FILE *f = test_tempfile(path, sizeof(path));
+    SS_CHECK(f != nullptr);
+    std::fclose(f);
+    for (const ModeCase &c : cases) {
+        SS_CHECK(parse_plugin_mode(c.name) == c.mode);
+        char body[128];
+        std::snprintf(body, sizeof(body), "{\"plugin_mode\":\"%s\"}", c.name);
+        write_config(path, body);
+        jconf_t *conf = read_jconf(path);
+        SS_CHECK(conf != nullptr && conf->plugin_mode == c.mode);
+    }
+    write_config(path, "{}");
+    jconf_t *conf = read_jconf(path);
+    SS_CHECK(conf != nullptr && conf->plugin_mode == TCP_ONLY);
+    std::remove(path);
+
+    for (const ModeCase &relay : cases) {
+        for (const ModeCase &plugin : cases) {
+            const bool expected = relay.mode == TCP_AND_UDP || relay.mode == plugin.mode;
+            SS_CHECK((plugin_mode_is_subset(plugin.mode, relay.mode) != 0) == expected);
+        }
+    }
+}
+
 } // namespace
 
 int
@@ -285,6 +325,7 @@ main(int argc, char **argv)
         return 0;
     }
     SS_RUN(test_server_endpoints);
+    SS_RUN(test_plugin_modes);
     SS_RUN(test_parse_addr);
     SS_RUN(test_read_jconf_preserves_64bit_integer_strings);
     SS_RUN(test_read_jconf_copies_out_of_the_parse_tree);

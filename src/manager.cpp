@@ -490,6 +490,11 @@ build_config(char *prefix, struct manager_ctx *manager, struct server *server)
         fprintf(f, ",\n\"plugin_opts\":");
         write_json_string(f, server->plugin_opts);
     }
+    if (server->plugin_mode != -1) {
+        fprintf(f, ",\n\"plugin_mode\":");
+        write_json_string(f, server->plugin_mode == UDP_ONLY ? "udp_only" :
+                             server->plugin_mode == TCP_AND_UDP ? "tcp_and_udp" : "tcp_only");
+    }
     fprintf(f, "\n}\n");
     fclose(f);
     ss_free(path);
@@ -627,6 +632,18 @@ start_server_process(struct manager_ctx *manager, struct server *server)
         (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--plugin-opts") == -1 ||
          add_server_arg(argv, &argc, ARRAY_SIZE(argv), manager->plugin_opts) == -1)) {
         goto ERROR;
+    }
+    if (server->plugin_mode == -1 && manager->plugin_mode == UDP_ONLY) {
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--plugin-mode") == -1 ||
+            add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"udp_only") == -1) {
+            goto ERROR;
+        }
+    }
+    if (server->plugin_mode == -1 && manager->plugin_mode == TCP_AND_UDP) {
+        if (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"--plugin-mode") == -1 ||
+            add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"tcp_and_udp") == -1) {
+            goto ERROR;
+        }
     }
     if (manager->nameservers &&
         (add_server_arg(argv, &argc, ARRAY_SIZE(argv), (char *)"-d") == -1 ||
@@ -826,6 +843,10 @@ get_server(char *buf, int len)
             } else if (strcmp(name, "plugin_opts") == 0) {
                 if (value->type == json_string) {
                     server->plugin_opts = strdup(value->u.string.ptr);
+                }
+            } else if (strcmp(name, "plugin_mode") == 0) {
+                if (value->type == json_string) {
+                    server->plugin_mode = parse_plugin_mode(value->u.string.ptr);
                 }
             } else if (strcmp(name, "mode") == 0) {
                 if (value->type == json_string) {
@@ -1481,6 +1502,7 @@ main(int argc, char **argv)
     char *manager_address = NULL;
     char *plugin          = NULL;
     char *plugin_opts     = NULL;
+    int   plugin_mode     = TCP_ONLY;
     char *workdir         = NULL;
 
     int fast_open  = 0;
@@ -1620,6 +1642,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
 \snippet{doc} utils.cpp cli_long_mtu
 \snippet{doc} utils.cpp cli_long_plugin
 \snippet{doc} utils.cpp cli_long_plugin_opts
+\snippet{doc} utils.cpp cli_long_plugin_mode
 \snippet{doc} utils.cpp cli_long_password
 \snippet{doc} utils.cpp cli_long_workdir
 \snippet{doc} utils.cpp cli_long_help
@@ -1652,6 +1675,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         { "mtu",             required_argument, NULL, GETOPT_VAL_MTU         },
         { "plugin",          required_argument, NULL, GETOPT_VAL_PLUGIN      },
         { "plugin-opts",     required_argument, NULL, GETOPT_VAL_PLUGIN_OPTS },
+        { "plugin-mode",     required_argument, NULL, GETOPT_VAL_PLUGIN_MODE },
         { "password",        required_argument, NULL, GETOPT_VAL_PASSWORD    },
         { "workdir",         required_argument, NULL, GETOPT_VAL_WORKDIR     },
         { "help",            no_argument,       NULL, GETOPT_VAL_HELP        },
@@ -1659,6 +1683,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     };
 
     int mode_set = 0;
+    int plugin_mode_set = 0;
     int ipv6first_set = 0;
     opterr = 0;
 
@@ -1706,6 +1731,10 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
             break;
         case GETOPT_VAL_PLUGIN_OPTS:
             plugin_opts = optarg;
+            break;
+        case GETOPT_VAL_PLUGIN_MODE:
+            plugin_mode = parse_plugin_mode(optarg);
+            plugin_mode_set = 1;
             break;
         case 's':
             if (server_num < MAX_REMOTE_NUM) {
@@ -1833,6 +1862,9 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
         }
         if (plugin_opts == NULL) {
             plugin_opts = conf->plugin_opts;
+        }
+        if (!plugin_mode_set) {
+            plugin_mode = conf->plugin_mode;
         }
         if (!ipv6first_set) {
             ipv6first = conf->ipv6_first;
@@ -1992,6 +2024,7 @@ Same behavior as `-d`; see that option for details. Short alias: `-d`.
     manager.mtu             = mtu;
     manager.plugin          = plugin;
     manager.plugin_opts     = plugin_opts;
+    manager.plugin_mode     = plugin_mode;
     manager.ipv6first       = ipv6first;
     manager.workdir         = workdir;
 #ifdef HAVE_SETRLIMIT

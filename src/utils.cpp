@@ -546,6 +546,12 @@ Enable SIP003 plugin. (Experimental)
 Set SIP003 plugin options. (Experimental)
 [cli_long_plugin_opts] */
 
+/* [cli_long_plugin_mode]
+\par `--plugin-mode <mode>`
+Set the SIP003u plugin transport mode to `tcp_only` (the default), `udp_only`,
+or `tcp_and_udp`. (Experimental)
+[cli_long_plugin_mode] */
+
 /* [cli_short_v]
 \par `-v`
 Enable verbose mode.
@@ -763,6 +769,7 @@ usage(void)
 #endif
     cli_help_option("--plugin NAME", "SIP003 plugin (requires plugin support in this build).");
     cli_help_option("--plugin-opts OPTIONS", "Options passed to the SIP003 plugin.");
+    cli_help_option("--plugin-mode MODE", "SIP003u transport: tcp_only, udp_only, or tcp_and_udp.");
     puts("\nProcess and diagnostics:");
     cli_help_option("-a, --user USER", "Run as the specified user.");
     cli_help_option("-f, --pid-file FILE", "Daemonize and write the process ID to FILE.");

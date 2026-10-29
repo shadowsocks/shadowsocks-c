@@ -439,6 +439,10 @@ read_jconf(const char *file)
                 }
             } else if (strcmp(name, "plugin_opts") == 0) {
                 conf.plugin_opts = to_string(value);
+            } else if (strcmp(name, "plugin_mode") == 0) {
+                /* plugin_mode: "tcp_only", "udp_only" or "tcp_and_udp" */
+                char *mode_str = to_string(value);
+                conf.plugin_mode = parse_plugin_mode(mode_str);
             } else if (strcmp(name, "fast_open") == 0) {
                 check_json_value_type(value, json_boolean,
                                       "invalid config file: option 'fast_open' must be a boolean");
@@ -547,4 +551,20 @@ read_jconf(const char *file)
 
     // The tree and the file text go with the scratch arena.
     return &conf;
+}
+
+int
+parse_plugin_mode(const char *mode_str)
+{
+    if (mode_str == NULL)
+        return TCP_ONLY;
+    if (strcmp(mode_str, "tcp_only") == 0)
+        return TCP_ONLY;
+    if (strcmp(mode_str, "udp_only") == 0)
+        return UDP_ONLY;
+    if (strcmp(mode_str, "tcp_and_udp") == 0)
+        return TCP_AND_UDP;
+    /* default */
+    LOGI("ignore unknown plugin_mode: %s, use tcp_only as fallback", mode_str);
+    return TCP_ONLY;
 }

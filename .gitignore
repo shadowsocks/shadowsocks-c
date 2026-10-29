@@ -52,6 +52,10 @@ rpm/BUILDROOT/
 *.rpm
 *.deb
 
+# Ignore files for clangd language server
+.cache/
+compile_commands.json
+
 # Ignore per-project vim config
 .vimrc
 

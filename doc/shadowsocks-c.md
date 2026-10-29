@@ -85,6 +85,7 @@ The config file equivalent of command line options is listed as examples below.
 - `--printable-salt`: `"printable_salt": true` (ss-local only)
 - `--plugin "obfs-server"`: `"plugin": "obfs-server"`
 - `--plugin-opts "obfs=http"`: `"plugin_opts": "obfs=http"`
+- `--plugin-mode "tcp_only"`: `"plugin_mode": "tcp_only"`
 - `-6`: `"ipv6_first": true`
 - `-n 1024`: `"nofile": 1024`
 - `-d "8.8.8.8"`: `"nameserver": "8.8.8.8"`

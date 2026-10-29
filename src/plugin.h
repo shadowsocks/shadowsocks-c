@@ -31,9 +31,9 @@ extern "C" {
 #define PLUGIN_EXIT_NORMAL -1
 #define PLUGIN_RUNNING      0
 
-enum plugin_mode {
-    MODE_CLIENT,
-    MODE_SERVER
+enum plugin_role {
+    ROLE_CLIENT,
+    ROLE_SERVER
 };
 
 /*
@@ -76,11 +76,11 @@ int start_plugin(const char *plugin,
 #ifdef __MINGW32__
                  uint16_t control_port,
 #endif
-                 enum plugin_mode mode);
+                 enum plugin_role role);
 /* The user the plugin runs as once started as root (see --user); NULL
  * keeps the starting user. Set before start_plugin(). */
 void set_plugin_user(const char *user);
-uint16_t get_local_port();
+uint16_t get_local_port(int with_udp);
 void stop_plugin();
 int is_plugin_running();
 

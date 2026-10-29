@@ -51,6 +51,7 @@ struct manager_ctx {
     char *user;
     char *plugin;
     char *plugin_opts;
+    int   plugin_mode;
     char *manager_address;
     char **hosts;
     int host_num;
@@ -73,6 +74,7 @@ struct server : ss::ListNode<> {
     char *method          = nullptr;
     char *plugin          = nullptr;
     char *plugin_opts     = nullptr;
+    int plugin_mode       = -1;
     uint64_t traffic      = 0;
 };
 

@@ -58,7 +58,7 @@ start_ss_plugin(const char *plugin,
                 const char *remote_port,
                 const char *local_host,
                 const char *local_port,
-                enum plugin_mode mode)
+                enum plugin_role role)
 {
     ss_process_env(sub, "SS_REMOTE_HOST", remote_host);
     ss_process_env(sub, "SS_REMOTE_PORT", remote_port);
@@ -116,7 +116,7 @@ start_obfsproxy(const char *plugin,
                 const char *remote_port,
                 const char *local_host,
                 const char *local_port,
-                enum plugin_mode mode)
+                enum plugin_role role)
 {
     char *pch;
     char *opts_dump = NULL;
@@ -154,7 +154,7 @@ start_obfsproxy(const char *plugin,
     }
 
     /* The rest options */
-    if (mode == MODE_CLIENT) {
+    if (role == ROLE_CLIENT) {
         /* Client mode */
         ss_process_arg(sub, "--dest");
         snprintf(buf, buf_size, "%s:%s", remote_host, remote_port);
@@ -196,7 +196,7 @@ start_plugin(const char *plugin,
 #ifdef __MINGW32__
              uint16_t control_port,
 #endif
-             enum plugin_mode mode)
+             enum plugin_role role)
 {
     int ret;
 
@@ -218,16 +218,16 @@ start_plugin(const char *plugin,
 
     if (!strncmp(plugin, "obfsproxy", strlen("obfsproxy")))
         ret = start_obfsproxy(plugin, plugin_opts, remote_host, remote_port,
-                              local_host, local_port, mode);
+                              local_host, local_port, role);
     else
         ret = start_ss_plugin(plugin, plugin_opts, remote_host, remote_port,
-                              local_host, local_port, mode);
+                              local_host, local_port, role);
     if (ret != 0) stop_plugin();
     return ret;
 }
 
 uint16_t
-get_local_port()
+get_local_port(int with_udp)
 {
     int sock = ss_socket(AF_INET, SOCK_STREAM, 0);
     if (sock < 0) {
@@ -249,6 +249,25 @@ get_local_port()
         ss_socket_close(sock);
         return 0;
     }
+    if (with_udp) {
+        int udp_sock = ss_socket(AF_INET, SOCK_DGRAM, 0);
+        if (udp_sock < 0) {
+            ss_socket_close(sock);
+            return 0;
+        }
+
+        if (bind(udp_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+            ss_socket_close(udp_sock);
+            ss_socket_close(sock);
+            return 0;
+        }
+
+        if (ss_socket_close(udp_sock) < 0) {
+            ss_socket_close(sock);
+            return 0;
+        }
+    }
+
     if (ss_socket_close(sock) < 0) {
         return 0;
     }
