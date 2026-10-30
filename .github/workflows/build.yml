@@ -34,6 +34,23 @@ jobs:
           jobs="$(nproc 2>/dev/null || sysctl -n hw.ncpu)"
           make -j"$jobs"
 
+  mbedtls-4:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install dependencies
+        run: brew install mbedtls libsodium libuv c-ares pcre2
+
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSS_DEPENDENCY_MODE=system -DWITH_STATIC=OFF \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix mbedtls)"
+          cmake --build build -j"$(sysctl -n hw.ncpu)"
+
+      - name: CTest
+        run: ctest --test-dir build -LE memcheck --output-on-failure --no-tests=error
+
   debian-package:
     runs-on: ubuntu-latest
     steps:

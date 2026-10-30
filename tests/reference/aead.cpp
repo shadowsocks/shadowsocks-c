@@ -181,14 +181,8 @@ aead_cipher_encrypt(cipher_ctx_t *cipher_ctx,
     case AES128GCM:
     case AES128GCM2022:
     case AES256GCM2022:
-#if MBEDTLS_VERSION_NUMBER < 0x03000000
-        err = mbedtls_cipher_auth_encrypt(cipher_ctx->evp, n, nlen, ad, adlen,
-                                          m, mlen, c, clen, c + mlen, tlen);
-        *clen += tlen;
-#else
-        err = mbedtls_cipher_auth_encrypt_ext(cipher_ctx->evp, n, nlen, ad, adlen,
-                                              m, mlen, c, mlen + tlen, clen, tlen);
-#endif
+        err = crypto_cipher_auth_encrypt(cipher_ctx->evp, n, nlen, ad, adlen,
+                                         m, mlen, c, clen, tlen);
         break;
     case CHACHA20POLY1305IETF:
     case CHACHA20POLY1305IETF2022:
@@ -237,13 +231,8 @@ aead_cipher_decrypt(cipher_ctx_t *cipher_ctx,
     case AES128GCM:
     case AES128GCM2022:
     case AES256GCM2022:
-#if MBEDTLS_VERSION_NUMBER < 0x03000000
-        err = mbedtls_cipher_auth_decrypt(cipher_ctx->evp, n, nlen, ad, adlen,
-                                          m, mlen - tlen, p, plen, m + mlen - tlen, tlen);
-#else
-        err = mbedtls_cipher_auth_decrypt_ext(cipher_ctx->evp, n, nlen, ad, adlen,
-                                              m, mlen, p, mlen - tlen, plen, tlen);
-#endif
+        err = crypto_cipher_auth_decrypt(cipher_ctx->evp, n, nlen, ad, adlen,
+                                         m, mlen, p, plen, tlen);
         break;
     case CHACHA20POLY1305IETF:
     case CHACHA20POLY1305IETF2022:
@@ -295,7 +284,7 @@ aead_get_cipher_type(int method)
              ciphername);
         return NULL;
     }
-    return mbedtls_cipher_info_from_string(mbedtlsname);
+    return crypto_cipher_info_from_string(mbedtlsname);
 }
 
 void
@@ -306,7 +295,7 @@ aead_cipher_ctx_set_key(cipher_ctx_t *cipher_ctx, int enc)
                              cipher_ctx->salt, cipher_ctx->cipher->key_len,
                              cipher_ctx->skey, cipher_ctx->cipher->key_len);
     } else {
-        const digest_type_t *md = mbedtls_md_info_from_string("SHA1");
+        const digest_type_t *md = mbedtls_md_info_from_type(MBEDTLS_MD_SHA1);
         if (md == NULL) {
             FATAL("SHA1 Digest not found in crypto library");
         }
@@ -334,11 +323,11 @@ aead_cipher_ctx_set_key(cipher_ctx_t *cipher_ctx, int enc)
         }
         return;
     }
-    if (mbedtls_cipher_setkey(cipher_ctx->evp, cipher_ctx->skey,
-                              cipher_ctx->cipher->key_len * 8, (mbedtls_operation_t)enc) != 0) {
+    if (crypto_cipher_setkey(cipher_ctx->evp, cipher_ctx->skey,
+                             cipher_ctx->cipher->key_len, enc) != 0) {
         FATAL("Cannot set mbed TLS cipher key");
     }
-    if (mbedtls_cipher_reset(cipher_ctx->evp) != 0) {
+    if (crypto_cipher_reset(cipher_ctx->evp) != 0) {
         FATAL("Cannot finish preparation of mbed TLS cipher context");
     }
 }
@@ -367,8 +356,7 @@ aead_cipher_ctx_init(cipher_ctx_t *cipher_ctx, int method, int enc)
         cipher_ctx->evp           = (cipher_evp_t *)ss_malloc(sizeof(cipher_evp_t));
         memset(cipher_ctx->evp, 0, sizeof(cipher_evp_t));
         cipher_evp_t *evp = cipher_ctx->evp;
-        mbedtls_cipher_init(evp);
-        if (mbedtls_cipher_setup(evp, cipher) != 0) {
+        if (crypto_cipher_setup(evp, cipher) != 0) {
             FATAL("Cannot initialize mbed TLS cipher context");
         }
     }
@@ -415,7 +403,7 @@ aead_ctx_release(cipher_ctx_t *cipher_ctx)
         return;
     }
 
-    mbedtls_cipher_free(cipher_ctx->evp);
+    crypto_cipher_free(cipher_ctx->evp);
     ss_free(cipher_ctx->evp);
 }
 

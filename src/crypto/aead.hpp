@@ -18,7 +18,7 @@
 //
 // With the bundled Mbed TLS (MBEDTLS_BLOCK_CIPHER_C) GCM key setup does not
 // allocate either. System Mbed TLS builds without it may still allocate
-// inside mbedtls_gcm_setkey.
+// inside mbedtls_gcm_setkey, and Mbed TLS 4.x allocates a PSA key slot.
 
 #include <array>
 #include <cstddef>
@@ -28,11 +28,11 @@
 #include <string_view>
 #include <variant>
 
-#include <mbedtls/gcm.h>
 #include <sodium.h>
 
 #include "core/buffer.hpp"
 #include "core/result.hpp"
+#include "crypto/mbedtls_compat.hpp"
 
 namespace ss::crypto {
 
@@ -127,13 +127,6 @@ public:
     const AeadSpec &spec() const noexcept { return spec_; }
 
 private:
-    struct MbedGcm {
-        MbedGcm() noexcept { mbedtls_gcm_init(&ctx); }
-        ~MbedGcm() { mbedtls_gcm_free(&ctx); }
-        MbedGcm(const MbedGcm &)            = delete;
-        MbedGcm &operator=(const MbedGcm &) = delete;
-        mbedtls_gcm_context ctx;
-    };
     struct SodiumAes256Gcm {
         ~SodiumAes256Gcm() { sodium_memzero(&state, sizeof(state)); }
         alignas(16) crypto_aead_aes256gcm_state state;
@@ -144,7 +137,7 @@ private:
     };
 
     AeadSpec spec_{};
-    std::variant<std::monostate, MbedGcm, SodiumAes256Gcm, SodiumChacha> impl_;
+    std::variant<std::monostate, mbed::Gcm, SodiumAes256Gcm, SodiumChacha> impl_;
 };
 
 class AeadTcpEncryptor {
